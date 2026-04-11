@@ -10,25 +10,53 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-08/512/512"
+_SAMPLE_PATH = "sample.jpg"
 
-def generate_interlaced_pair(size=256):
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
+
+def generate_interlaced_pair(size=512):
     """
-    生成一對模擬 interlaced fields：
-    奇數行（field 1）的物體在 x=60，偶數行（field 2）的物體在 x=70
+    生成一對模擬 interlaced fields（使用真實圖作背景）：
+    奇數行 field 1 的前景物體在 x=120，偶數行 field 2 在 x=140（模擬運動）
     """
-    def make_frame(cx):
-        img = np.ones((size, size), dtype=np.uint8) * 80
-        for i in range(0, size, 16):
-            img[i, :] = 60
-            img[:, i] = 60
-        cv2.rectangle(img, (cx, 80), (cx+60, 180), 220, -1)
+    _ensure_sample_image()
+
+    bg = None
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            bg = cv2.resize(img, (size, size))
+
+    def make_frame(cx, background):
+        if background is not None:
+            img = background.copy()
+        else:
+            img = np.ones((size, size), dtype=np.uint8) * 80
+            for i in range(0, size, 16):
+                img[i, :] = 60
+                img[:, i] = 60
+        # 疊加一個移動的白色方塊作為前景運動物體
+        h_start, h_end = size // 3, 2 * size // 3
+        cv2.rectangle(img, (cx, h_start), (cx + 80, h_end), 240, -1)
+        cv2.rectangle(img, (cx + 8, h_start + 8), (cx + 72, h_end - 8), 180, -1)
         return img
 
-    frame_odd = make_frame(cx=60)
-    frame_even = make_frame(cx=70)
+    frame_odd  = make_frame(cx=120, background=bg)
+    frame_even = make_frame(cx=140, background=bg)
 
     interlaced = np.zeros((size, size), dtype=np.uint8)
     interlaced[0::2, :] = frame_odd[0::2, :]

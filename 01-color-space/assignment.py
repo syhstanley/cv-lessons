@@ -11,22 +11,38 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-01/512/512"
+_SAMPLE_PATH = "sample.jpg"
+
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
 
 def load_or_generate_image():
-    """如果有圖片就用，沒有就生成彩色漸層測試圖"""
-    test_path = "test.jpg"
-    if os.path.exists(test_path):
-        img = cv2.imread(test_path)
-        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    else:
-        img = np.zeros((256, 256, 3), dtype=np.uint8)
-        for i in range(256):
-            for j in range(256):
-                img[i, j] = [i, j, 128]
-        return img
+    """下載真實彩色圖，沒網路時 fallback 到漸層合成圖"""
+    _ensure_sample_image()
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH)
+        if img is not None:
+            img = cv2.resize(img, (512, 512))
+            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # fallback：彩色漸層合成圖
+    img = np.zeros((512, 512, 3), dtype=np.uint8)
+    for i in range(512):
+        for j in range(512):
+            img[i, j] = [i // 2, j // 2, 128]
+    return img
 
 
 # ── Task 1：RGB → YUV 手動計算 vs OpenCV ────────────────────────────────

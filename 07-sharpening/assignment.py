@@ -13,21 +13,38 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-07/512/512"
+_SAMPLE_PATH = "sample.jpg"
+
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
 
 def load_or_generate_image():
-    test_path = "test.jpg"
-    if os.path.exists(test_path):
-        return cv2.imread(test_path, cv2.IMREAD_GRAYSCALE)
-    else:
-        img = np.zeros((256, 256), dtype=np.uint8)
-        cv2.rectangle(img, (40, 40), (180, 180), 180, -1)
-        cv2.circle(img, (128, 128), 50, 100, -1)
-        for i in range(20, 240, 10):
-            img[i, 20:240] = np.clip(img[i, 20:240].astype(int) + 40, 0, 255)
-        return img.astype(np.uint8)
+    """下載真實灰階圖（銳化效果在真實紋理上更明顯），沒網路時 fallback"""
+    _ensure_sample_image()
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            return cv2.resize(img, (512, 512))
+    # fallback：含紋理的合成圖
+    img = np.zeros((512, 512), dtype=np.uint8)
+    cv2.rectangle(img, (60, 60), (360, 360), 180, -1)
+    cv2.circle(img, (256, 256), 100, 100, -1)
+    for i in range(30, 480, 12):
+        img[i, 30:480] = np.clip(img[i, 30:480].astype(int) + 40, 0, 255)
+    return img.astype(np.uint8)
 
 
 def simulate_blur(img, sigma=2.0):

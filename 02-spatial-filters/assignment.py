@@ -16,18 +16,35 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-02/512/512"
+_SAMPLE_PATH = "sample.jpg"
+
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
 
 def load_or_generate_image():
-    test_path = "test.jpg"
-    if os.path.exists(test_path):
-        return cv2.imread(test_path, cv2.IMREAD_GRAYSCALE)
-    else:
-        img = np.zeros((256, 256), dtype=np.uint8)
-        img[:, 128:] = 200
-        return img
+    """下載真實灰階圖，沒網路時 fallback 到合成圖"""
+    _ensure_sample_image()
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            return cv2.resize(img, (512, 512))
+    # fallback：半黑半白合成圖
+    img = np.zeros((512, 512), dtype=np.uint8)
+    img[:, 256:] = 200
+    return img
 
 
 def add_gaussian_noise(img, sigma=25):

@@ -14,22 +14,47 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-04/512/512"
+_SAMPLE_PATH = "sample.jpg"
 
-def generate_bayer_raw(size=256):
-    """生成模擬的 Bayer RGGB raw image"""
-    rgb = np.zeros((size, size, 3), dtype=np.uint8)
-    rgb[:, :size//3] = [200, 50, 50]
-    rgb[:, size//3:2*size//3] = [50, 200, 50]
-    rgb[:, 2*size//3:] = [50, 50, 200]
-    rgb[80:180, 80:180] = [220, 220, 220]
 
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
+
+def generate_bayer_raw(size=512):
+    """用真實彩色圖生成 Bayer RGGB raw image，沒圖時 fallback 到合成色塊"""
+    _ensure_sample_image()
+    rgb = None
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH)
+        if img is not None:
+            img = cv2.resize(img, (size, size))
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    if rgb is None:
+        # fallback：三色色塊
+        rgb = np.zeros((size, size, 3), dtype=np.uint8)
+        rgb[:, :size//3] = [200, 50, 50]
+        rgb[:, size//3:2*size//3] = [50, 200, 50]
+        rgb[:, 2*size//3:] = [50, 50, 200]
+        rgb[size//4:3*size//4, size//4:3*size//4] = [220, 220, 220]
+
+    # 加上感測器模擬噪聲
     noise = np.random.normal(0, 5, rgb.shape).astype(np.int16)
     rgb = np.clip(rgb.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
-    # RGGB pattern: R at (even,even), G at (even,odd) and (odd,even), B at (odd,odd)
+    # RGGB pattern: R at (even,even), G at (even,odd)+(odd,even), B at (odd,odd)
     bayer = np.zeros((size, size), dtype=np.uint8)
     bayer[0::2, 0::2] = rgb[0::2, 0::2, 0]
     bayer[0::2, 1::2] = rgb[0::2, 1::2, 1]

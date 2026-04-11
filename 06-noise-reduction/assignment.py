@@ -13,24 +13,54 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
+_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-06/512/512"
+_SAMPLE_PATH = "sample.jpg"
+
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
+
 
 def generate_video_sequence(num_frames=10, size=256):
-    """生成模擬影片：靜態背景 + 移動的圓形物體 + Gaussian noise"""
-    frames = []
-    bg = np.ones((size, size), dtype=np.float32) * 100
-    for i in range(0, size, 20):
-        bg[i, :] = 80
-        bg[:, i] = 80
+    """
+    生成模擬影片：真實圖片背景 + 移動白色方塊 + Gaussian noise
+    背景使用下載的 sample image（灰階），讓 Temporal NR 效果更真實可見。
+    """
+    _ensure_sample_image()
 
+    # 嘗試載入真實圖作為背景
+    bg = None
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
+        if img is not None:
+            bg = cv2.resize(img, (size, size)).astype(np.float32)
+
+    if bg is None:
+        # fallback：格線合成背景
+        bg = np.ones((size, size), dtype=np.float32) * 100
+        for i in range(0, size, 20):
+            bg[i, :] = 80
+            bg[:, i] = 80
+
+    frames = []
     for t in range(num_frames):
         frame = bg.copy()
-        cx = 50 + t * 15
-        cy = 128
-        Y, X = np.ogrid[:size, :size]
-        frame[(X - cx)**2 + (Y - cy)**2 < 25**2] = 220
+        # 移動的白色方塊（模擬運動物體）
+        cx = 20 + t * 18
+        cy = size // 2
+        r = 22
+        frame[max(0, cy-r):cy+r, max(0, cx-r):min(size, cx+r)] = 240
+        # 加入 Gaussian noise（這就是 Temporal NR 要消除的對象）
         noise = np.random.normal(0, 20, frame.shape)
         frame = np.clip(frame + noise, 0, 255).astype(np.uint8)
         frames.append(frame)
