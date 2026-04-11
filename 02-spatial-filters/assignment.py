@@ -4,6 +4,12 @@ Assignment 02 — 空間域濾波器
 目標：從頭實作 Gaussian / Median / Bilateral，並與 OpenCV 比較
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P1 — 2D Convolution 的定義與邊界行為        → Task 1
+    P2 — Gaussian Kernel 的 Separability 證明   → Task 2, Task 5
+    P3 — Gaussian Filter 等於頻域低通濾波器     → Task 2
+    P6 — Bilateral Filter 的保邊原理            → Task 4
 """
 
 import cv2
@@ -51,6 +57,8 @@ def manual_convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     3. 用雙層迴圈對每個輸出 pixel (i, j) 取出對應的鄰域，
        與 kernel 做逐元素乘積後加總
     4. 輸出尺寸與輸入相同，數值 clip 到 0-255
+
+    📐 完整定義與邊界行為推導見 ../formula_prove.md P1
     """
     h, w = img.shape
     kh, kw = kernel.shape
@@ -74,6 +82,8 @@ def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
 
     其中 x, y 是相對中心的座標（中心為 0,0，範圍為 -k ~ k，k = size // 2）。
     生成後除以所有元素的總和做正規化，確保濾波不改變整體亮度。
+
+    📐 為什麼 Gaussian 是好的低通濾波器，見 ../formula_prove.md P3
     """
     k = size // 2
     kernel = np.zeros((size, size), dtype=np.float32)
@@ -186,6 +196,8 @@ def task5_bonus_separable_gaussian(img):
     3. 直接生成 7×7 的 2D Gaussian kernel，對原圖做一次卷積
     4. 比較兩個結果的差異（應該幾乎為 0）
     5. 計算並列印兩種方法的乘法次數差異（7×7 vs 7+7 次/pixel）
+
+    📐 Separability 數學證明（G(x,y) = G(x)·G(y)）見 ../formula_prove.md P2
     """
     print("=== Task 5 (Bonus): Separable Gaussian ===")
     print("  → TODO: 驗證 separable 性質")

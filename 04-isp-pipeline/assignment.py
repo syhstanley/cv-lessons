@@ -4,6 +4,10 @@ Assignment 04 — ISP Pipeline
 目標：實作簡化版 ISP：Bayer → Demosaic → White Balance → Gamma
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P12 — Gray World 白平衡假設的統計推導  → Task 2
+    P9  — Gamma Correction 的感知模型      → Task 3
 """
 
 import cv2
@@ -115,6 +119,8 @@ def gray_world_white_balance(img_rgb: np.ndarray) -> np.ndarray:
         B' = clip(B × gain_B, 0, 255)
 
     把增益乘到對應 channel 後 clip 到 0-255。
+
+    📐 Gray World 假設的統計基礎，見 ../formula_prove.md P12
     """
     img_float = img_rgb.astype(np.float32)
 
@@ -174,6 +180,8 @@ def apply_gamma(img: np.ndarray, gamma: float) -> np.ndarray:
     1. 把 uint8 除以 255，轉成 float32 的 0-1 範圍
     2. 套用 np.power(x, 1.0 / gamma)
     3. 乘以 255，clip 到 0-255，轉回 uint8
+
+    📐 為什麼 γ=2.2 符合人眼感知，見 ../formula_prove.md P9
     """
     img_float = img.astype(np.float32) / 255.0
     result = None  # TODO

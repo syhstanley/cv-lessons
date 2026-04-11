@@ -4,6 +4,10 @@ Assignment 03 — 邊緣偵測
 目標：從頭實作 Sobel，理解 Canny pipeline
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P11 — Sobel Gradient Direction 的幾何意義  → Task 1
+    P10 — Laplacian Variance 作為清晰度指標    → Task 4
 """
 
 import cv2
@@ -42,6 +46,8 @@ def manual_sobel(img: np.ndarray):
     2. 對影像分別做卷積，得到 Gx 和 Gy（可用 cv2.filter2D）
     3. 計算 Magnitude，clip 到 0-255 後轉 uint8
     4. 計算 Direction，用 np.degrees(np.arctan2(...)) 轉成角度
+
+    📐 Gradient Direction 為何代表邊緣法向量，見 ../formula_prove.md P11
     """
     Kx = np.array([[-1, 0, 1],
                    [-2, 0, 2],
@@ -198,6 +204,8 @@ def task4_bonus_blur_detection(img):
     2. 對每個模糊版本用 cv2.Laplacian 計算拉普拉斯，再取 .var()
     3. 畫出 sigma vs sharpness score 的折線圖並存檔
     4. 觀察：score 如何隨模糊程度單調遞減？
+
+    📐 為什麼 Laplacian Variance 能衡量清晰度，見 ../formula_prove.md P10
     """
     print("=== Task 4 (Bonus): 模糊偵測 ===")
 

@@ -4,6 +4,9 @@ Assignment 07 — 影像銳化與畫質增強
 目標：實作 USM、Laplacian Sharpening、Histogram EQ
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P8 — Histogram Equalization 的 CDF 映射推導  → Task 3
 """
 
 import cv2
@@ -152,6 +155,8 @@ def manual_histogram_eq(img: np.ndarray) -> np.ndarray:
     3. 找 CDF_min（cdf[cdf > 0].min()）
     4. 用公式建立 mapping table（長度 256，每個值對應新灰度）
     5. 用 mapping[img] 做查表映射
+
+    📐 CDF 映射為何能均勻化 histogram，見 ../formula_prove.md P8
     """
     hist = np.zeros(256, dtype=np.float32)
     # TODO: 統計每個灰度值的出現次數

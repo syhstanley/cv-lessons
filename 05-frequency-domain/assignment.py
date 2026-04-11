@@ -4,6 +4,11 @@ Assignment 05 — 頻域濾波
 目標：用 FFT 實作 LPF / HPF，觀察頻譜，並消除週期性噪聲
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P4 — Convolution Theorem（空間卷積 = 頻域乘法）  → Task 1, Task 2
+    P3 — Gaussian Filter 等於頻域低通濾波器          → Task 2
+    P5 — Ideal LPF 的 Ringing（Gibbs Phenomenon）   → Task 2
 """
 
 import cv2
@@ -53,6 +58,8 @@ def task1_visualize_spectrum(img):
     5. 顯示原圖和頻譜並存檔
 
     觀察：頻譜中心是低頻（平均亮度），邊緣是高頻（細節、邊緣、噪聲）。
+
+    📐 空間域 convolution 為何等價於頻域乘法，見 ../formula_prove.md P4
     """
     print("=== Task 1: FFT 頻譜視覺化 ===")
 
@@ -94,6 +101,8 @@ def make_ideal_lpf(shape, cutoff):
     對頻譜中每個點計算到中心 (cy, cx) 的距離，
     距離 ≤ cutoff 的設為 1（保留），其他設為 0（濾除）。
     返回 float32 的 2D mask。
+
+    📐 為何硬截斷會產生 Ringing，見 ../formula_prove.md P5
     """
     h, w = shape
     cy, cx = h // 2, w // 2
@@ -114,6 +123,8 @@ def make_gaussian_lpf(shape, sigma):
 
     σ 越大 → 截止頻率越高 → 保留更多高頻 → 越清晰
     σ 越小 → 截止頻率越低 → 更模糊，與 Gaussian blur 等效
+
+    📐 Gaussian 在頻域為何仍是 Gaussian，見 ../formula_prove.md P3
     """
     h, w = shape
     cy, cx = h // 2, w // 2

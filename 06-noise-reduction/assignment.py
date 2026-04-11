@@ -4,6 +4,9 @@ Assignment 06 — Noise Reduction
 目標：實作 Temporal NR + Motion-Adaptive 機制
 
 執行：python assignment.py
+
+📐 公式推導參考（../formula_prove.md）：
+    P7 — IIR Temporal Filter 的頻率響應（Z-Transform 分析）→ Task 1, Task 3
 """
 
 import cv2
@@ -52,6 +55,8 @@ def iir_temporal_nr(frames: list, alpha: float) -> list:
         α → 0 : 依賴歷史 frame，降噪效果強但移動物體有拖影
 
     第一個 frame 沒有 Y(t-1)，直接令 Y(0) = X(0)。
+
+    📐 IIR 的 Z-Transform 與頻率響應分析，見 ../formula_prove.md P7
     """
     results = []
     prev_output = None
