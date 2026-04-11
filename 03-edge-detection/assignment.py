@@ -19,7 +19,6 @@ def load_or_generate_image():
     if os.path.exists(test_path):
         return cv2.imread(test_path, cv2.IMREAD_GRAYSCALE)
     else:
-        # 生成幾何形狀測試圖
         img = np.zeros((256, 256), dtype=np.uint8)
         cv2.rectangle(img, (50, 50), (150, 150), 200, -1)
         cv2.circle(img, (190, 190), 40, 150, -1)
@@ -29,8 +28,13 @@ def load_or_generate_image():
 # ── Task 1：手動實作 Sobel ───────────────────────────────────────────────
 def manual_sobel(img: np.ndarray):
     """
-    TODO: 手動實作 Sobel edge detection
-    返回 (Gx, Gy, magnitude, direction)
+    手動實作 Sobel edge detection，返回 (Gx, Gy, magnitude, direction)。
+
+    步驟：
+    1. 定義水平和垂直的 Sobel kernel（已提供）
+    2. 對影像分別做卷積，得到 Gx 和 Gy（可用 cv2.filter2D）
+    3. Magnitude = sqrt(Gx² + Gy²)，clip 到 0-255
+    4. Direction = arctan2(Gy, Gx)，單位為 degrees（-180 ~ 180）
     """
     Kx = np.array([[-1, 0, 1],
                    [-2, 0, 2],
@@ -40,13 +44,10 @@ def manual_sobel(img: np.ndarray):
                    [ 0,  0,  0],
                    [ 1,  2,  1]], dtype=np.float32)
 
-    # TODO: 用 cv2.filter2D 或 Lesson 02 的 manual_convolve2d 做卷積
     Gx = None  # TODO
     Gy = None  # TODO
-
-    # TODO: 計算 magnitude 和 direction
-    magnitude = None  # TODO: sqrt(Gx² + Gy²)，clip 到 0-255
-    direction = None  # TODO: arctan2(Gy, Gx)，單位：degrees
+    magnitude = None  # TODO
+    direction = None  # TODO
 
     return Gx, Gy, magnitude, direction
 
@@ -54,14 +55,12 @@ def manual_sobel(img: np.ndarray):
 def task1_sobel(img):
     print("=== Task 1: Sobel ===")
 
-    # 先加一點 Gaussian blur 去噪
     img_blur = cv2.GaussianBlur(img, (3, 3), sigmaX=1)
-
     Gx, Gy, mag, direction = manual_sobel(img_blur)
+
     cv_sobel_x = cv2.Sobel(img_blur, cv2.CV_64F, 1, 0, ksize=3)
     cv_sobel_y = cv2.Sobel(img_blur, cv2.CV_64F, 0, 1, ksize=3)
-    cv_mag = np.sqrt(cv_sobel_x**2 + cv_sobel_y**2)
-    cv_mag = np.clip(cv_mag, 0, 255).astype(np.uint8)
+    cv_mag = np.clip(np.sqrt(cv_sobel_x**2 + cv_sobel_y**2), 0, 255).astype(np.uint8)
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     data = [
@@ -87,25 +86,22 @@ def task1_sobel(img):
 # ── Task 2：Non-Maximum Suppression ─────────────────────────────────────
 def non_maximum_suppression(magnitude: np.ndarray, direction: np.ndarray) -> np.ndarray:
     """
-    TODO: 實作 Canny 的 Non-Maximum Suppression
-    - 把 gradient direction 量化到 4 個方向（0°, 45°, 90°, 135°）
-    - 在每個方向上，只保留局部最大值的 pixel
-    - 非最大值設為 0（邊緣細化）
+    實作 Canny 的 Non-Maximum Suppression（邊緣細化）。
 
     步驟：
-    1. 把 direction 轉到 0-180°（角度對稱）
-    2. 量化角度到最近的 45° 倍數
-    3. 比較 pixel 和其方向上的兩個鄰居
-    4. 如果不是最大值，設為 0
+    1. 把 gradient direction 轉到 0-180° 範圍（direction % 180）
+    2. 對每個非邊緣 pixel (i, j)，根據角度量化到最近的 45° 方向：
+       - 0°（或 180°）：水平方向，比較左右鄰居 (i, j-1) 和 (i, j+1)
+       - 45°：對角方向，比較 (i+1, j-1) 和 (i-1, j+1)
+       - 90°：垂直方向，比較 (i-1, j) 和 (i+1, j)
+       - 135°：對角方向，比較 (i-1, j-1) 和 (i+1, j+1)
+    3. 如果當前 pixel 的 magnitude 不是三者中最大，設為 0（抑制）
+    4. 跳過邊緣（第一行/列、最後行/列）
     """
     h, w = magnitude.shape
     result = np.zeros_like(magnitude)
 
-    # TODO: 實作 NMS
-    # angle = direction % 180
-    # for i in range(1, h-1):
-    #     for j in range(1, w-1):
-    #         ...
+    # TODO: 實作上述邏輯
 
     return result
 
@@ -137,7 +133,12 @@ def task2_nms(mag, direction):
 # ── Task 3：Double Threshold + Hysteresis ────────────────────────────────
 def task3_canny_full(img):
     """
-    用 OpenCV Canny 測試不同閾值，觀察 hysteresis 效果
+    用 OpenCV Canny 測試不同閾值組合，觀察 hysteresis 效果。
+    先對影像做 Gaussian blur（5×5，sigma=1.4）去噪，
+    再用三組不同的 low/high threshold 跑 Canny，
+    比較邊緣數量和品質的差異。
+
+    思考：high threshold 越高時，強邊緣和弱邊緣分別有什麼變化？
     """
     print("=== Task 3: Canny（閾值比較）===")
 
@@ -164,18 +165,18 @@ def task3_canny_full(img):
     plt.close()
     print("  → output/task3_canny.png")
 
-    # TODO（思考題）：
-    # high threshold 越高 → 強邊緣越少，弱邊緣也不容易連上
-    # 什麼場景適合低閾值？什麼場景需要高閾值？
-
 
 # ── Task 4（Bonus）：用 Laplacian 做模糊偵測 ───────────────────────────
 def task4_bonus_blur_detection(img):
     """
-    Realtek Camera 的 Auto Focus 評估方法之一：
-    計算圖片的 Laplacian variance，越高表示越清晰
-    TODO: 對同一張圖做不同程度的 blur，計算各自的 Laplacian variance
-    並畫出 blur sigma vs sharpness score 的曲線
+    Realtek Camera Auto Focus 的評估方法：
+    用 Laplacian variance 衡量影像的清晰度（越高 = 越清晰）。
+
+    步驟：
+    1. 對同一張圖用不同 sigma（0, 1, 2, 4, 8, 16）做 Gaussian blur
+    2. 對每個模糊版本計算 Laplacian，再取 variance
+    3. 畫出 sigma vs sharpness score 的折線圖
+    4. 觀察並說明：score 如何隨模糊程度變化？
     """
     print("=== Task 4 (Bonus): 模糊偵測 ===")
 
@@ -183,15 +184,12 @@ def task4_bonus_blur_detection(img):
     scores = []
 
     for sigma in sigmas:
-        if sigma == 0:
-            blurred = img
-        else:
-            blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=sigma)
-        # TODO: 計算 Laplacian variance
+        blurred = img if sigma == 0 else cv2.GaussianBlur(img, (0, 0), sigmaX=sigma)
         lap = cv2.Laplacian(blurred, cv2.CV_64F)
-        score = None  # TODO: lap.var()
+        score = None  # TODO: 計算 Laplacian 的 variance
+        scores.append(score)
 
-    # TODO: 畫出 sigma vs score 曲線
+    # TODO: 用 matplotlib 畫出 sigma vs score 的折線圖並存檔
     print("  → TODO: 完成模糊程度 vs Laplacian variance 曲線")
 
 

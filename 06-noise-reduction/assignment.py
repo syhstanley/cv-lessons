@@ -14,31 +14,20 @@ import os
 os.makedirs("output", exist_ok=True)
 
 
-# ── 模擬影片序列 ─────────────────────────────────────────────────────────
 def generate_video_sequence(num_frames=10, size=256):
-    """
-    生成模擬影片：靜態背景 + 移動的圓形物體 + Gaussian noise
-    返回 list of frames
-    """
+    """生成模擬影片：靜態背景 + 移動的圓形物體 + Gaussian noise"""
     frames = []
-    bg = np.ones((size, size), dtype=np.float32) * 100  # 灰色背景
-
-    # 加入一些靜態紋理
+    bg = np.ones((size, size), dtype=np.float32) * 100
     for i in range(0, size, 20):
         bg[i, :] = 80
         bg[:, i] = 80
 
     for t in range(num_frames):
         frame = bg.copy()
-
-        # 移動的圓（從左到右）
         cx = 50 + t * 15
         cy = 128
         Y, X = np.ogrid[:size, :size]
-        circle_mask = (X - cx)**2 + (Y - cy)**2 < 25**2
-        frame[circle_mask] = 220
-
-        # 加 Gaussian noise
+        frame[(X - cx)**2 + (Y - cy)**2 < 25**2] = 220
         noise = np.random.normal(0, 20, frame.shape)
         frame = np.clip(frame + noise, 0, 255).astype(np.uint8)
         frames.append(frame)
@@ -49,20 +38,23 @@ def generate_video_sequence(num_frames=10, size=256):
 # ── Task 1：Simple IIR Temporal NR ──────────────────────────────────────
 def iir_temporal_nr(frames: list, alpha: float) -> list:
     """
-    TODO: 實作簡單的 IIR Temporal NR
-    Output(t) = alpha * Input(t) + (1 - alpha) * Output(t-1)
-    第一個 frame 直接輸出（無前一 frame）
+    實作簡單的 IIR Temporal NR。
+
+    公式：Output(t) = alpha × Input(t) + (1 - alpha) × Output(t-1)
+    - alpha 接近 1 → 依賴當前 frame（少降噪）
+    - alpha 接近 0 → 依賴歷史 frame（強降噪，但移動物體有拖影）
+
+    第一個 frame 沒有前一幀，直接輸出原始 frame。
     """
     results = []
     prev_output = None
 
-    for t, frame in enumerate(frames):
+    for frame in frames:
         frame_f = frame.astype(np.float32)
         if prev_output is None:
             output = frame_f
         else:
-            # TODO: 實作 IIR
-            output = None  # alpha * frame_f + (1 - alpha) * prev_output
+            output = None  # TODO: IIR 混合公式
 
         if output is None:
             output = frame_f
@@ -79,13 +71,12 @@ def task1_iir_temporal(frames):
     alpha_03 = iir_temporal_nr(frames, alpha=0.3)
     alpha_07 = iir_temporal_nr(frames, alpha=0.7)
 
-    # 對比最後一個 frame
     last = len(frames) - 1
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
         (frames[last], f"Noisy frame {last}"),
-        (alpha_03[last], f"IIR α=0.3\n（強降噪，注意拖影）"),
-        (alpha_07[last], f"IIR α=0.7\n（弱降噪，少拖影）"),
+        (alpha_03[last], "IIR α=0.3\n（強降噪，注意拖影）"),
+        (alpha_07[last], "IIR α=0.7\n（弱降噪，少拖影）"),
         (frames[0], "Reference frame 0"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
@@ -102,20 +93,20 @@ def task1_iir_temporal(frames):
 def detect_motion(frame_curr: np.ndarray, frame_prev: np.ndarray,
                   threshold: int = 20) -> np.ndarray:
     """
-    TODO: 用 frame difference 做 motion detection
-    返回 binary mask（True = motion area）
-    """
-    # TODO: 計算差異
-    diff = None  # np.abs(frame_curr.astype(np.int32) - frame_prev.astype(np.int32))
-    motion_mask = None  # diff > threshold
+    用 frame difference 做 motion detection。
 
+    計算當前 frame 和前一 frame 的絕對差值，
+    差值超過 threshold 的位置視為有移動（True），否則為靜止（False）。
+    注意：計算差值時要先轉成 int32 避免 uint8 溢位。
+    """
+    diff = None         # TODO: 計算絕對差值
+    motion_mask = None  # TODO: diff > threshold
     return motion_mask
 
 
 def task2_motion_detection(frames):
     print("=== Task 2: Motion Detection ===")
 
-    # 對比第 0 和第 5 frame
     t = 5
     motion = detect_motion(frames[t], frames[t-1], threshold=20)
 
@@ -141,28 +132,32 @@ def motion_adaptive_temporal_nr(frames: list, alpha_static: float = 0.2,
                                   alpha_motion: float = 1.0,
                                   motion_threshold: int = 20) -> list:
     """
-    TODO: 實作 Motion-Adaptive Temporal NR
-    - 靜態區域：用 alpha_static（強降噪）
-    - 運動區域：用 alpha_motion（不混合，alpha=1 = 直接用當前 frame）
+    實作 Motion-Adaptive Temporal NR。
+
+    對每個 pixel 根據是否有移動選擇不同的 alpha：
+    - 靜止區域：用 alpha_static（強降噪）
+    - 移動區域：用 alpha_motion = 1.0（完全用當前 frame，不混合，避免拖影）
+
+    步驟：
+    1. 用 detect_motion 取得 motion mask
+    2. 根據 mask 建立 per-pixel 的 alpha_map（np.where）
+    3. output = alpha_map × current + (1 - alpha_map) × prev_output
     """
     results = []
     prev_output = None
 
-    for t, frame in enumerate(frames):
+    for frame in frames:
         frame_f = frame.astype(np.float32)
 
         if prev_output is None:
             output = frame_f
         else:
-            # TODO: 計算 motion mask
-            motion_mask = detect_motion(frame, np.clip(prev_output, 0, 255).astype(np.uint8),
-                                         threshold=motion_threshold)
+            prev_uint8 = np.clip(prev_output, 0, 255).astype(np.uint8)
+            motion_mask = detect_motion(frame, prev_uint8, threshold=motion_threshold)
 
-            # TODO: 根據 motion mask 選擇不同 alpha
             if motion_mask is None:
                 output = alpha_static * frame_f + (1 - alpha_static) * prev_output
             else:
-                # alpha_map: motion area → alpha_motion，靜態 → alpha_static
                 alpha_map = None  # TODO: np.where(motion_mask, alpha_motion, alpha_static)
                 if alpha_map is None:
                     output = alpha_static * frame_f + (1 - alpha_static) * prev_output
@@ -181,7 +176,6 @@ def task3_adaptive(frames):
     naive_nr = iir_temporal_nr(frames, alpha=0.3)
     adaptive_nr = motion_adaptive_temporal_nr(frames, alpha_static=0.2, alpha_motion=1.0)
 
-    # 展示幾個 frame 的比較
     fig, axes = plt.subplots(3, 5, figsize=(20, 12))
     for col, t in enumerate([0, 2, 4, 6, 8]):
         axes[0, col].imshow(frames[t], cmap='gray', vmin=0, vmax=255)
@@ -198,11 +192,17 @@ def task3_adaptive(frames):
     print("  → output/task3_adaptive.png")
 
 
-# ── Task 4（Bonus）：計算 PSNR 評估 NR 效果 ────────────────────────────
+# ── Task 4（Bonus）：PSNR 評估 NR 效果 ─────────────────────────────────
 def task4_bonus_psnr(frames):
     """
-    TODO: 生成 clean frames（無噪聲），計算各種 NR 的 PSNR
-    比較：Noisy / Spatial NR (Bilateral) / Temporal NR / Adaptive NR
+    生成對應的 clean frames（同一場景但沒有 noise），
+    計算各種 NR 方法的平均 PSNR 並比較：
+    - Noisy（無 NR）
+    - Spatial NR（單 frame，用 Bilateral filter）
+    - Temporal NR（IIR，alpha=0.3）
+    - Motion-Adaptive NR
+
+    最後畫成長條圖。
     """
     print("=== Task 4 (Bonus): PSNR 評估 ===")
 
@@ -210,7 +210,7 @@ def task4_bonus_psnr(frames):
         mse = np.mean((a.astype(np.float32) - b.astype(np.float32))**2)
         return 20 * np.log10(255 / np.sqrt(mse)) if mse > 0 else float('inf')
 
-    # TODO: 生成對應的 clean frames 並計算各方法 PSNR
+    # TODO: 生成 clean frames，計算各方法 PSNR 並畫圖
     print("  → TODO: 計算各方法 PSNR 並比較")
 
 

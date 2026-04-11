@@ -27,7 +27,7 @@ def load_or_generate_image():
 
 
 def add_periodic_noise(img, freq=20, amplitude=40):
-    """加入週期性正弦噪聲（模擬電磁干擾）"""
+    """加入水平方向的週期性正弦噪聲（模擬電磁干擾）"""
     h, w = img.shape
     noise = amplitude * np.sin(2 * np.pi * freq * np.arange(w) / w)
     noisy = img.astype(np.float32) + noise[np.newaxis, :]
@@ -36,20 +36,24 @@ def add_periodic_noise(img, freq=20, amplitude=40):
 
 # ── Task 1：FFT 頻譜視覺化 ───────────────────────────────────────────────
 def task1_visualize_spectrum(img):
+    """
+    計算影像的 2D FFT 並視覺化頻譜。
+
+    步驟：
+    1. 用 np.fft.fft2 計算 2D DFT
+    2. 用 np.fft.fftshift 把 DC 分量（低頻）移到圖中央
+    3. 取 magnitude（np.abs）
+    4. 用 log scale（np.log1p）壓縮動態範圍以便觀察
+    5. 顯示原圖和頻譜並存檔
+
+    觀察：頻譜中心是什麼？邊緣是什麼？
+    """
     print("=== Task 1: FFT 頻譜視覺化 ===")
 
-    # TODO: 計算 FFT 並視覺化
-    # 步驟：
-    # 1. np.fft.fft2(img)
-    # 2. np.fft.fftshift(...)  移 DC 到中心
-    # 3. 取 magnitude：np.abs(...)
-    # 4. log scale：np.log1p(magnitude)
-    # 5. 正規化到 0-255
-
-    F = None  # TODO: np.fft.fft2(img)
-    F_shift = None  # TODO: np.fft.fftshift(F)
-    magnitude = None  # TODO: np.abs(F_shift)
-    log_magnitude = None  # TODO: np.log1p(magnitude)
+    F = None        # TODO: 計算 FFT
+    F_shift = None  # TODO: fftshift
+    magnitude = None       # TODO: np.abs
+    log_magnitude = None   # TODO: np.log1p
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].imshow(img, cmap='gray')
@@ -73,42 +77,45 @@ def task1_visualize_spectrum(img):
 # ── Task 2：Ideal vs Gaussian LPF ───────────────────────────────────────
 def make_ideal_lpf(shape, cutoff):
     """
-    TODO: 生成 Ideal Low-Pass Filter mask
-    - shape: (H, W)
-    - cutoff: 截止頻率（距中心的像素距離）
-    - 中心以內 = 1，以外 = 0
+    生成 Ideal Low-Pass Filter mask。
+
+    對頻譜中每個點，計算它到中心的距離，
+    距離 ≤ cutoff 的設為 1（保留），其他設為 0（濾除）。
+    返回 float32 的 2D mask。
     """
     h, w = shape
     cy, cx = h // 2, w // 2
     Y, X = np.ogrid[:h, :w]
-    dist = None  # TODO: np.sqrt((Y - cy)**2 + (X - cx)**2)
-    mask = None  # TODO: (dist <= cutoff).astype(np.float32)
+    dist = None   # TODO: 計算每點到 (cy, cx) 的距離
+    mask = None   # TODO: 距離 ≤ cutoff 的位置為 1
     return mask
 
 
 def make_gaussian_lpf(shape, sigma):
     """
-    TODO: 生成 Gaussian Low-Pass Filter mask
-    H(u,v) = exp(-D² / 2σ²)
+    生成 Gaussian Low-Pass Filter mask。
+
+    H(u,v) = exp(-D²(u,v) / 2σ²)
+    其中 D 是到中心的距離，σ 控制截止頻率寬度。
     """
     h, w = shape
     cy, cx = h // 2, w // 2
     Y, X = np.ogrid[:h, :w]
-    dist_sq = None  # TODO: (Y - cy)**2 + (X - cx)**2
-    mask = None  # TODO: np.exp(-dist_sq / (2 * sigma**2))
+    dist_sq = None  # TODO: (Y-cy)² + (X-cx)²
+    mask = None     # TODO: exp(-dist_sq / (2*sigma²))
     return mask
 
 
 def apply_freq_filter(img, mask):
     """
-    TODO: 在頻域套用 mask，返回過濾後的空間域影像
-    步驟：fft2 → fftshift → 乘 mask → ifftshift → ifft2 → 取實部
+    在頻域套用 mask，返回過濾後的空間域影像。
+
+    步驟：fft2 → fftshift → 乘 mask → ifftshift → ifft2 → 取實部 → clip
     """
     F = np.fft.fft2(img.astype(np.float32))
     F_shift = np.fft.fftshift(F)
 
-    # TODO: 套用 mask
-    G_shift = None  # F_shift * mask
+    G_shift = None  # TODO: F_shift × mask
 
     if G_shift is None:
         return img
@@ -145,6 +152,12 @@ def task2_lpf(img):
 
 # ── Task 3：High-pass Filter（HPF = 1 - LPF）───────────────────────────
 def task3_hpf(img):
+    """
+    HPF = 1 - LPF，高通濾波器保留高頻（邊緣細節）。
+
+    用 make_gaussian_lpf 生成 LPF mask，再用 1 減去它得到 HPF mask。
+    分別套用兩個 mask，並把 HPF 結果疊加回原圖（係數 0.5）觀察銳化效果。
+    """
     print("=== Task 3: HPF ===")
 
     shape = img.shape
@@ -154,13 +167,11 @@ def task3_hpf(img):
         print("  → 需要先完成 Task 2")
         return
 
-    # HPF = 1 - LPF
     gauss_hpf = 1.0 - gauss_lpf
 
     lpf_result = apply_freq_filter(img, gauss_lpf)
     hpf_result = apply_freq_filter(img, gauss_hpf)
 
-    # HPF + original → 銳化效果
     sharpened = np.clip(
         img.astype(np.float32) + 0.5 * hpf_result.astype(np.float32),
         0, 255
@@ -184,13 +195,17 @@ def task3_hpf(img):
 # ── Task 4：週期性噪聲消除（Notch Filter）──────────────────────────────
 def task4_notch_filter(img):
     """
-    TODO: 找出頻譜中週期性噪聲的亮點，用 Notch filter 消除
+    用 Notch Filter 消除週期性噪聲。
+
+    週期性噪聲在頻譜上會出現明顯的亮點，位置對應噪聲頻率。
+    水平方向頻率為 freq=20 的噪聲，亮點在頻譜中心左右各偏移 20 個 bin 處。
 
     步驟：
-    1. 計算含噪聲圖片的 FFT
-    2. 視覺化頻譜，找出噪聲頻率對應的亮點位置
-    3. 在那個位置附近設為 0（notch）
-    4. 逆 FFT 恢復圖片
+    1. 對含噪聲影像計算 FFT 並觀察頻譜
+    2. 建立全為 1 的 mask
+    3. 在噪聲頻率對應的位置（中心左右各 20 個 bin）附近（半徑約 4）設為 0
+    4. 套用 mask 後逆 FFT 回空間域
+    5. 比較原圖、含噪聲圖、濾波後圖的頻譜
     """
     print("=== Task 4: Notch Filter（週期性噪聲）===")
 
@@ -200,22 +215,11 @@ def task4_notch_filter(img):
     F_shift = np.fft.fftshift(F)
     magnitude = np.log1p(np.abs(F_shift))
 
-    # TODO: 設計 Notch mask
-    # 1. 先觀察 magnitude 找亮點位置
-    # 2. 建立 mask（全 1），在亮點位置設為 0
-    mask = np.ones_like(F_shift, dtype=np.float32)
-
-    # 頻率 freq=20 對應頻譜位置：
     h, w = noisy.shape
-    # 水平方向的週期噪聲 → 頻譜在 (cy, cx ± freq_bin)
     cy, cx = h // 2, w // 2
-    freq_bin = int(20 * w / w)  # = 20 pixels from center
 
-    # TODO: 在 (cy, cx+freq_bin) 和 (cy, cx-freq_bin) 附近設 mask=0
-    # radius = 3
-    # Y, X = np.ogrid[:h, :w]
-    # for dy, dx in [(cy, cx+freq_bin), (cy, cx-freq_bin)]:
-    #     mask[np.sqrt((Y-dy)**2 + (X-dx)**2) < radius] = 0
+    mask = np.ones((h, w), dtype=np.float32)
+    # TODO: 在 (cy, cx+20) 和 (cy, cx-20) 附近半徑 4 的範圍設 mask=0
 
     filtered_F = F_shift * mask
     result = np.fft.ifft2(np.fft.ifftshift(filtered_F)).real

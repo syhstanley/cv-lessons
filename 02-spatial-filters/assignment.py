@@ -17,10 +17,8 @@ os.makedirs("output", exist_ok=True)
 def load_or_generate_image():
     test_path = "test.jpg"
     if os.path.exists(test_path):
-        img = cv2.imread(test_path, cv2.IMREAD_GRAYSCALE)
-        return img
+        return cv2.imread(test_path, cv2.IMREAD_GRAYSCALE)
     else:
-        # 生成帶噪聲的測試圖（中間有一條清晰邊緣）
         img = np.zeros((256, 256), dtype=np.uint8)
         img[:, 128:] = 200
         return img
@@ -28,41 +26,36 @@ def load_or_generate_image():
 
 def add_gaussian_noise(img, sigma=25):
     noise = np.random.normal(0, sigma, img.shape).astype(np.float32)
-    noisy = np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
-    return noisy
+    return np.clip(img.astype(np.float32) + noise, 0, 255).astype(np.uint8)
 
 
 def add_salt_pepper_noise(img, prob=0.05):
     noisy = img.copy()
     rng = np.random.default_rng()
-    salt = rng.random(img.shape) < prob / 2
-    pepper = rng.random(img.shape) < prob / 2
-    noisy[salt] = 255
-    noisy[pepper] = 0
+    noisy[rng.random(img.shape) < prob / 2] = 255
+    noisy[rng.random(img.shape) < prob / 2] = 0
     return noisy
 
 
 # ── Task 1：手動實作 2D Convolution ─────────────────────────────────────
 def manual_convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """
-    TODO: 從頭實作 2D convolution（不用 cv2 或 scipy）
-    - 注意 padding（用 replicate padding）
-    - kernel 假設是奇數大小（3x3、5x5 等）
-    - 輸出尺寸與輸入相同
+    從頭實作 2D convolution，不使用 cv2 或 scipy。
+
+    步驟：
+    1. 根據 kernel 大小計算需要的 padding 量（kernel 邊長 // 2）
+    2. 對輸入影像做 replicate padding（邊緣像素向外複製）
+    3. 用雙層迴圈對每個輸出 pixel 計算卷積（鄰域與 kernel 的逐元素乘積和）
+    4. 輸出尺寸與輸入相同，數值 clip 到 0-255
     """
     h, w = img.shape
     kh, kw = kernel.shape
     pad_h, pad_w = kh // 2, kw // 2
 
-    # TODO: 實作 replicate padding
-    padded = None  # np.pad(...)
-
+    padded = None  # TODO: 用 np.pad 做 replicate padding（mode='edge'）
     output = np.zeros_like(img, dtype=np.float32)
 
-    # TODO: 雙層迴圈做卷積
-    # for i in range(h):
-    #     for j in range(w):
-    #         output[i, j] = np.sum(...)
+    # TODO: 雙層迴圈，對每個 (i, j) 取出對應鄰域，與 kernel 做逐元素乘積後 sum
 
     return np.clip(output, 0, 255).astype(np.uint8)
 
@@ -70,20 +63,16 @@ def manual_convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
 # ── Task 2：Gaussian Kernel 生成 + 應用 ─────────────────────────────────
 def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
     """
-    TODO: 生成 size×size 的 Gaussian kernel
-    G(x,y) = exp(-(x²+y²) / 2σ²)，最後正規化讓總和=1
+    生成 size×size 的 Gaussian kernel。
+
+    公式：G(x,y) = exp(-(x²+y²) / 2σ²)
+    其中 x, y 是相對中心的座標（中心為 0,0）。
+    生成後要正規化讓所有元素總和等於 1。
     """
     k = size // 2
     kernel = np.zeros((size, size), dtype=np.float32)
 
-    # TODO: 填入 Gaussian 值
-    # for i in range(size):
-    #     for j in range(size):
-    #         x, y = i - k, j - k
-    #         kernel[i, j] = ...
-
-    # TODO: 正規化
-    # kernel /= kernel.sum()
+    # TODO: 用雙層迴圈填入每個位置的 Gaussian 值，再除以總和正規化
 
     return kernel
 
@@ -91,15 +80,11 @@ def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
 def task2_gaussian(img_noisy_gaussian):
     print("=== Task 2: Gaussian Filter ===")
 
-    # 生成 kernel
     kernel_3 = gaussian_kernel(3, sigma=1.0)
     kernel_7 = gaussian_kernel(7, sigma=2.0)
 
-    # 手動卷積
     result_3 = manual_convolve2d(img_noisy_gaussian, kernel_3)
     result_7 = manual_convolve2d(img_noisy_gaussian, kernel_7)
-
-    # OpenCV 版本對照
     cv_result = cv2.GaussianBlur(img_noisy_gaussian, (7, 7), sigmaX=2.0)
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
@@ -119,20 +104,18 @@ def task2_gaussian(img_noisy_gaussian):
 # ── Task 3：Median Filter ────────────────────────────────────────────────
 def manual_median_filter(img: np.ndarray, ksize: int) -> np.ndarray:
     """
-    TODO: 從頭實作 Median Filter
-    - 取 ksize×ksize 鄰域的中值
-    - 同樣用 replicate padding
+    從頭實作 Median Filter。
+
+    步驟：
+    1. 對影像做 replicate padding（padding 量 = ksize // 2）
+    2. 用雙層迴圈對每個 pixel 取出 ksize×ksize 的鄰域
+    3. 取鄰域的中值作為輸出
     """
     h, w = img.shape
     pad = ksize // 2
     output = np.zeros_like(img)
 
-    # TODO: 實作
-    # padded = np.pad(img, pad, mode='edge')
-    # for i in range(h):
-    #     for j in range(w):
-    #         neighborhood = padded[i:i+ksize, j:j+ksize]
-    #         output[i, j] = np.median(neighborhood)
+    # TODO: 實作上述步驟
 
     return output
 
@@ -142,8 +125,6 @@ def task3_median(img_noisy_sp):
 
     result_manual = manual_median_filter(img_noisy_sp, ksize=3)
     result_cv = cv2.medianBlur(img_noisy_sp, 3)
-
-    # 也對照一下 Gaussian 對 S&P noise 的效果（應該比 Median 差）
     result_gaussian = cv2.GaussianBlur(img_noisy_sp, (3, 3), sigmaX=1.0)
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
@@ -163,12 +144,13 @@ def task3_median(img_noisy_sp):
 # ── Task 4：Bilateral Filter 觀察 ────────────────────────────────────────
 def task4_bilateral(img_noisy_gaussian):
     """
-    Bilateral 實作複雜，這裡主要用 OpenCV 觀察行為，
-    重點是調整 sigma_r 的影響
+    用 OpenCV 的 bilateralFilter 觀察 sigma_r（sigmaColor）的影響。
+    固定 sigma_s=9，分別測試 sigma_r = 10 / 75 / 150，
+    觀察邊緣保留效果的變化，並思考：為什麼 sigma_r 越大，
+    行為會越來越接近普通的 Gaussian blur？
     """
     print("=== Task 4: Bilateral Filter ===")
 
-    # σ_s=9（空間），調整 σ_r 觀察邊緣保留效果
     results = {
         "Noisy": img_noisy_gaussian,
         "σ_r=10 (強保邊)": cv2.bilateralFilter(img_noisy_gaussian, d=9, sigmaColor=10, sigmaSpace=9),
@@ -186,19 +168,18 @@ def task4_bilateral(img_noisy_gaussian):
     plt.close()
     print("  → output/task4_bilateral.png")
 
-    # TODO（思考題）：
-    # 在邊緣附近放大看，σ_r=10 和 σ_r=150 的邊緣清晰度有何差異？
-    # 為什麼 σ_r 大時行為接近 Gaussian blur？
-
 
 # ── Task 5（Bonus）：Separable Gaussian ──────────────────────────────────
 def task5_bonus_separable_gaussian(img):
     """
-    TODO: 驗證 2D Gaussian 可以拆成兩個 1D convolution
-    1. 生成 1D Gaussian kernel（長度 7，σ=2）
-    2. 先做水平卷積，再做垂直卷積
-    3. 與直接做 2D Gaussian 比較差異（應該幾乎為 0）
-    4. 計算兩種方法的運算次數差異（7×7 vs 7+7）
+    驗證 2D Gaussian 可以分解成兩個 1D convolution 的性質（separability）。
+
+    步驟：
+    1. 生成長度 7、sigma=2 的 1D Gaussian kernel（記得正規化）
+    2. 先對影像做水平方向的 1D convolution，再對結果做垂直方向的 1D convolution
+    3. 直接生成 7×7 的 2D Gaussian kernel，對原圖做一次卷積
+    4. 比較兩個結果的差異（應該幾乎為 0）
+    5. 計算並列印兩種方法的乘法次數差異（7×7 vs 7+7 次/pixel）
     """
     print("=== Task 5 (Bonus): Separable Gaussian ===")
     print("  → TODO: 驗證 separable 性質")
