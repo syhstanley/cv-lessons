@@ -15,8 +15,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-01/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/01-color-space/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test.png")
 
 
 def _ensure_sample_image():
@@ -59,22 +59,52 @@ def task1_rgb_to_yuv(img_rgb):
     img_float = img_rgb.astype(np.float32)
     R, G, B = img_float[:,:,0], img_float[:,:,1], img_float[:,:,2]
 
-    Y = None  # TODO
-    U = None  # TODO
-    V = None  # TODO
+    Y = 0.299*R + 0.587*G + 0.114*B  # TODO
+    U =-0.147*R - 0.289*G + 0.436*B + 128  # TODO
+    V = 0.615*R - 0.515*G - 0.100*B + 128  # TODO
+
+    Y = np.clip(Y, 0, 255).astype(np.uint8)
+    U = np.clip(U, 0, 255).astype(np.uint8)
+    V = np.clip(V, 0, 255).astype(np.uint8)
+
+    img_yuv = np.stack([Y,U,V], axis=2)
 
     # OpenCV 版本（用來對照）
     img_yuv_cv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2YUV)
+    diff = np.abs(img_yuv.astype(np.int32) - img_yuv_cv.astype(np.int32))
+    diff = 255 - diff.astype(np.uint8)
+    print(f"  手動 vs OpenCV 最大差異：{diff.max()}（因浮點係數略有不同）")
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
-    axes[0].imshow(img_rgb)
-    axes[0].set_title("Original RGB")
-    axes[1].imshow(img_yuv_cv[:,:,0], cmap='gray')
-    axes[1].set_title("Y Channel (Luma)")
-    axes[2].imshow(img_yuv_cv[:,:,1], cmap='RdBu')
-    axes[2].set_title("U Channel (Cb)")
-    axes[3].imshow(img_yuv_cv[:,:,2], cmap='RdBu')
-    axes[3].set_title("V Channel (Cr)")
+    fig, axes = plt.subplots(2, 5, figsize=(16, 8))
+    axes[0][0].imshow(img_rgb)
+    axes[0][0].set_title("Original RGB")
+
+    axes[1][0].imshow(diff)
+    axes[1][0].set_title("Difference")
+
+    axes[0][1].imshow(img_yuv_cv)
+    axes[0][1].set_title("CV2 YUV")
+
+    axes[0][2].imshow(img_yuv_cv[:,:,0], cmap='gray')
+    axes[0][2].set_title("CV2 Y (Luma)")
+
+    axes[0][3].imshow(img_yuv_cv[:,:,1], cmap='RdBu')
+    axes[0][3].set_title("CV2 U (Cb)")
+
+    axes[0][4].imshow(img_yuv_cv[:,:,2], cmap='RdBu')
+    axes[0][4].set_title("CV2 V (Cr)")
+
+    axes[1][1].imshow(img_yuv)
+    axes[1][1].set_title("Manual YUV ")
+
+    axes[1][2].imshow(img_yuv[:,:,0], cmap='gray')
+    axes[1][2].set_title("Y (Luma)")
+
+    axes[1][3].imshow(img_yuv[:,:,1], cmap='RdBu')
+    axes[1][3].set_title("U (Cb)")
+
+    axes[1][4].imshow(img_yuv[:,:,2], cmap='RdBu')
+    axes[1][4].set_title("V (Cr)")
     plt.suptitle("Task 1: RGB → YUV Channels")
     plt.savefig("output/task1_yuv.png", dpi=120, bbox_inches='tight')
     plt.close()
@@ -96,11 +126,60 @@ def task2_chroma_subsampling(img_yuv):
     # 再放大回原尺寸，模擬 subsampling 的失真效果。
     # 縮放用 cv2.resize，插值方式用 INTER_LINEAR。
     # 最後把結果和原始 4:4:4 比較，觀察色彩細節的差異在哪裡。
+    h, w = Y.shape
 
-    U_420 = None  # TODO
-    V_420 = None  # TODO
+    # down sample
+    U_sub = cv2.resize(U, (w//2, h//2), interpolation = cv2.INTER_LINEAR)
+    V_sub = cv2.resize(V, (w//2, h//2), interpolation = cv2.INTER_LINEAR)
 
-    print("  → TODO: 完成 Chroma Subsampling 並比較差異")
+    # up sample
+    U_420 = cv2.resize(U_sub, (w, h), interpolation = cv2.INTER_LINEAR)  # TODO
+    V_420 = cv2.resize(V_sub, (w, h), interpolation = cv2.INTER_LINEAR)  # TODO
+
+    img_420 = np.stack([Y, U_420, V_420], axis=2)
+    img_420_rgb = cv2.cvtColor(img_420, cv2.COLOR_YUV2RGB)
+    img_444 = np.stack([Y, U, V], axis=2)
+    img_444_rgb = cv2.cvtColor(img_444, cv2.COLOR_YUV2RGB)
+
+    diff_u = 255 - np.abs(U.astype(np.int32) - U_420.astype(np.int32)).astype(np.uint8)
+    diff_v = 255 - np.abs(V.astype(np.int32) - V_420.astype(np.int32)).astype(np.uint8)
+    diff_rgb = 255 - np.abs(img_444.astype(np.int32) - img_420.astype(np.int32)).astype(np.uint8)
+
+    fig, axes = plt.subplots(3, 5, figsize=(20, 12))
+    axes[0][0].imshow(img_444_rgb)
+    axes[0][0].set_title("4:4:4 (RGB)")
+    axes[1][0].imshow(img_420_rgb)
+    axes[1][0].set_title("4:2:0 (RGB)")
+    axes[2][0].imshow(diff_rgb, cmap='gray')
+    axes[2][0].set_title("Difference")
+
+    axes[0][1].imshow(img_444)
+    axes[0][1].set_title("4:4:4 (YUV)")
+    axes[1][1].imshow(img_420)
+    axes[1][1].set_title("4:2:0 (YUV)")
+
+    axes[0][2].imshow(img_444[:,:,0], cmap='gray')
+    axes[0][2].set_title("4:4:4 (Y)")
+    axes[1][2].imshow(img_420[:,:,0], cmap='gray')
+    axes[1][2].set_title("4:2:0 (Y)")
+
+    axes[0][3].imshow(img_444[:,:,1], cmap='RdBu')
+    axes[0][3].set_title("4:4:4 (U)")
+    axes[1][3].imshow(img_420[:,:,1], cmap='RdBu')
+    axes[1][3].set_title("4:2:0 (U)")
+    axes[2][3].imshow(diff_u, cmap='gray')
+    axes[2][3].set_title("U Difference")
+    
+    axes[0][4].imshow(img_444[:,:,2], cmap='RdBu')
+    axes[0][4].set_title("4:4:4 (V)")
+    axes[1][4].imshow(img_420[:,:,2], cmap='RdBu')
+    axes[1][4].set_title("4:2:0 (V)")
+    axes[2][4].imshow(diff_v, cmap='gray')
+    axes[2][4].set_title("V Difference")
+    
+    plt.savefig("output/task2_chroma_subsampling.png", dpi=120, bbox_inches='tight')
+    plt.close()
+    print("  → output/task2_chroma_subsampling.png")
 
 
 # ── Task 3：HSV 顏色遮罩（找出圖中特定顏色）────────────────────────────
@@ -119,11 +198,22 @@ def task3_hsv_mask(img_rgb):
     lower_red2 = np.array([170, 100, 100])
     upper_red2 = np.array([180, 255, 255])
 
-    mask1 = None  # TODO
-    mask2 = None  # TODO
+    mask1 = cv2.inRange(img_hsv, lower_red1, upper_red1)  # TODO
+    mask2 = cv2.inRange(img_hsv, lower_red2, upper_red2)  # TODO
+    mask = cv2.bitwise_or(mask1, mask2)
+    img_masked = cv2.bitwise_and(img_rgb, img_rgb, mask=mask)
 
-    print("  → TODO: 完成 HSV 遮罩")
-
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    for ax, (im, title, cmap) in zip(axes, [
+        (img_rgb, "Original", None),
+        (mask, "Red Mask", 'gray'),
+        (img_masked, "Masked Result", None),
+    ]):
+        ax.imshow(im, cmap=cmap)
+        ax.set_title(title)
+        ax.axis('off')
+    plt.savefig("output/task3_hsv_mask.png", dpi=120, bbox_inches='tight')
+    plt.close()
 
 # ── Task 4（Bonus）：BT.601 vs BT.709 差異 ──────────────────────────────
 def task4_bonus_bt601_vs_bt709(img_rgb):
@@ -138,6 +228,27 @@ def task4_bonus_bt601_vs_bt709(img_rgb):
     """
     print("=== Task 4 (Bonus): BT.601 vs BT.709 ===")
     print("  → TODO: 比較兩種標準的 Y channel 差異")
+    img_float = img_rgb.astype(np.float32)
+    R, G, B = img_float[:,:,0], img_float[:,:,1], img_float[:,:,2]
+    Y_601 = 0.299*R + 0.587*G + 0.114*B
+    Y_709 = 0.2126*R + 0.7152*G + 0.0722*B
+    diff = np.abs(Y_601 - Y_709)
+    print(f"  Y channel 最大差異：{diff.max():.2f}")
+    print(f"  Y channel 平均差異：{diff.mean():.4f}")
+
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+    for ax, (im, title, cmap) in zip(axes, [
+        (img_rgb, "Original", None),
+        (Y_601, "BT.601 Y", 'gray'),
+        (Y_709, "BT.709 Y", 'gray'),
+        (diff, "Difference", 'gray'),
+    ]):
+        ax.imshow(im, cmap=cmap)
+        ax.set_title(title)
+        ax.axis('off')
+    plt.savefig("output/task4_bonus_bt601_vs_bt709.png", dpi=120, bbox_inches='tight')
+    plt.close()
+
 
 
 # ── Main ─────────────────────────────────────────────────────────────────

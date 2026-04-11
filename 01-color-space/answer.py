@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-os.makedirs("output", exist_ok=True)
+os.makedirs("output_ans", exist_ok=True)
 
 
 def load_or_generate_image():
@@ -58,9 +58,9 @@ def task1_rgb_to_yuv(img_rgb):
     axes[3].imshow(img_yuv_cv[:,:,2], cmap='RdBu')
     axes[3].set_title("V Channel (Cr)")
     plt.suptitle("Task 1: RGB → YUV Channels")
-    plt.savefig("output/task1_yuv.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task1_yuv.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task1_yuv.png")
+    print("  → output_ans/task1_yuv.png")
 
     return img_yuv_cv
 
@@ -104,10 +104,10 @@ def task2_chroma_subsampling(img_yuv):
         ax.set_title(title)
         ax.axis('off')
     plt.suptitle("Task 2: 4:4:4 vs 4:2:0 Chroma Subsampling")
-    plt.savefig("output/task2_subsampling.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task2_subsampling.png", dpi=120, bbox_inches='tight')
     plt.close()
     print(f"  U channel 最大差異：{diff_u.max()}")
-    print("  → output/task2_subsampling.png")
+    print("  → output_ans/task2_subsampling.png")
 
 
 # ── Task 3：HSV 顏色遮罩（找出圖中特定顏色）────────────────────────────
@@ -137,9 +137,9 @@ def task3_hsv_mask(img_rgb):
         ax.imshow(im, cmap=cmap)
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task3_hsv_mask.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task3_hsv_mask.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task3_hsv_mask.png")
+    print("  → output_ans/task3_hsv_mask.png")
 
 
 # ── Task 4（Bonus）：BT.601 vs BT.709 差異 ──────────────────────────────
@@ -169,9 +169,9 @@ def task4_bonus_bt601_vs_bt709(img_rgb):
         ax.imshow(im, cmap='gray')
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task4_bt601_vs_bt709.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task4_bt601_vs_bt709.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task4_bt601_vs_bt709.png")
+    print("  → output_ans/task4_bt601_vs_bt709.png")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -184,4 +184,4 @@ if __name__ == "__main__":
     task3_hsv_mask(img_rgb)
     task4_bonus_bt601_vs_bt709(img_rgb)
 
-    print("\n完成！查看 output/ 資料夾。")
+    print("\n完成！查看 output_ans/ 資料夾。")
