@@ -43,11 +43,13 @@ def bob_deinterlace(interlaced: np.ndarray, use_odd_field: bool = True) -> np.nd
     實作 Bob Deinterlacing。
 
     選擇使用奇數行或偶數行的 field，對缺少的行做線性插值：
-    - 若 use_odd_field=True：奇數行（0,2,4,...）直接複製，
-      偶數行（1,3,5,...）用上方和下方奇數行的平均值補齊
-    - 若 use_odd_field=False：反之，偶數行直接複製，奇數行插值
 
-    邊界情況（第一行或最後一行無法雙向插值）：直接複製鄰近行。
+    公式（以 use_odd_field=True 為例）：
+        奇數行  i = 0, 2, 4, ... ：Output[i] = Interlaced[i]        （直接複製）
+        偶數行  i = 1, 3, 5, ... ：Output[i] = (Output[i-1] + Interlaced[i+1]) / 2  （線性插值）
+        最後一行（若無下方鄰居）：Output[H-1] = Output[H-2]          （複製上一行）
+
+    use_odd_field=False 時對換奇偶邏輯，第一行無上方鄰居時複製下一行。
     """
     h, w = interlaced.shape
     result = np.zeros((h, w), dtype=np.float32)
@@ -135,14 +137,18 @@ def motion_adaptive_deinterlace(interlaced: np.ndarray,
     """
     實作 Motion-Adaptive Deinterlacing。
 
-    計算兩個 field 的絕對差值作為 motion map：
-    - 靜態區域（差值小）：用 Weave（高解析度）
-    - 移動區域（差值大）：用 Bob（無 comb artifact）
+    公式：
+        diff(x, y)        = |field1(x, y) - field2(x, y)|
+        motion(x, y)      = True   if diff(x, y) > threshold
+                            False  otherwise
+
+        Output(x, y) = Bob(x, y)    if motion(x, y)   （動態：無拖影）
+                       Weave(x, y)  otherwise          （靜態：高解析度）
 
     步驟：
-    1. 分別計算 Weave 和 Bob 的結果
-    2. 計算 field1 和 field2 的差值，差值 > threshold 為 motion
-    3. 用 np.where 根據 motion mask 選擇 Bob 或 Weave
+    1. 分別算出 Weave 和 Bob 的結果
+    2. 計算兩個 field 的差值，超過 threshold 視為移動
+    3. 用 np.where(motion_mask, bob, weave) 做 per-pixel 選擇
     """
     weave = weave_deinterlace(field1, field2)
     bob = bob_deinterlace(interlaced, use_odd_field=True)

@@ -43,13 +43,17 @@ def bilinear_demosaic(bayer: np.ndarray) -> np.ndarray:
     每個 pixel 在 Bayer 中只有一個 channel 的值，需要從鄰居插值出另外兩個 channel。
 
     插值規則（以 R channel 為例）：
-    - R 已知的位置（even row, even col）：直接使用
+    - R 已知的位置（even row, even col）：直接使用，不插值
     - G 位置（橫/縱鄰居有 R）：取上下左右 R 的平均
+        R_est = (R[i-1,j] + R[i+1,j] + R[i,j-1] + R[i,j+1]) / 4
     - B 位置（對角鄰居有 R）：取四個對角 R 的平均
+        R_est = (R[i-1,j-1] + R[i-1,j+1] + R[i+1,j-1] + R[i+1,j+1]) / 4
 
-    提示：可以先把每個 channel 的已知值放到獨立的 array，
-    再用 cv2.filter2D 搭配適當的 kernel 做插值。
-    最後把三個 channel stack 成 (H, W, 3) 的 RGB 圖。
+    G、B channel 插值邏輯相同，只是已知位置不同。
+
+    提示：先把每個 channel 的已知值放到獨立 array（非已知位置填 0），
+    再用 cv2.filter2D 搭配適當的插值 kernel 做加權平均。
+    最後 np.stack 三個 channel 成 (H, W, 3) 的 RGB 圖。
     """
     h, w = bayer.shape
     rgb = np.zeros((h, w, 3), dtype=np.float32)
@@ -98,12 +102,19 @@ def gray_world_white_balance(img_rgb: np.ndarray) -> np.ndarray:
     實作 Gray World 白平衡假設。
 
     假設：一張自然圖片所有像素的平均顏色應該是中性灰。
-    所以計算各 channel 的平均值，讓它們相等：
-    - gain_R = mean(all_channels) / mean(R)
-    - gain_G = 1.0（G channel 作為基準不動）
-    - gain_B = mean(all_channels) / mean(B)
 
-    把增益乘到對應 channel，最後 clip 到 0-255。
+    公式：
+        mean_all = (mean_R + mean_G + mean_B) / 3
+
+        gain_R = mean_all / mean_R
+        gain_G = 1.0            （G channel 作為基準，不動）
+        gain_B = mean_all / mean_B
+
+        R' = clip(R × gain_R, 0, 255)
+        G' = G
+        B' = clip(B × gain_B, 0, 255)
+
+    把增益乘到對應 channel 後 clip 到 0-255。
     """
     img_float = img_rgb.astype(np.float32)
 
@@ -153,11 +164,15 @@ def apply_gamma(img: np.ndarray, gamma: float) -> np.ndarray:
     """
     實作 Gamma Correction。
 
-    公式：output = (input / 255) ^ (1/gamma) × 255
+    公式：
+        output = (input / 255) ^ (1/γ) × 255
+
+        γ = 2.2 → 把線性光 encoding 成人眼感知空間（sRGB 標準）
+        γ = 1.0 → 不做任何校正（pass-through）
 
     步驟：
-    1. 把 uint8 轉成 float32，除以 255 正規化到 0-1
-    2. 套用 power function（指數為 1/gamma）
+    1. 把 uint8 除以 255，轉成 float32 的 0-1 範圍
+    2. 套用 np.power(x, 1.0 / gamma)
     3. 乘以 255，clip 到 0-255，轉回 uint8
     """
     img_float = img.astype(np.float32) / 255.0

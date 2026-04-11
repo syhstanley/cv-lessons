@@ -42,10 +42,14 @@ def manual_convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """
     從頭實作 2D convolution，不使用 cv2 或 scipy。
 
+    公式：
+        Output(i, j) = Σ_m Σ_n  Kernel(m, n) × Padded(i+m, j+n)
+
     步驟：
-    1. 根據 kernel 大小計算需要的 padding 量（kernel 邊長 // 2）
-    2. 對輸入影像做 replicate padding（邊緣像素向外複製）
-    3. 用雙層迴圈對每個輸出 pixel 計算卷積（鄰域與 kernel 的逐元素乘積和）
+    1. 根據 kernel 大小計算需要的 padding 量（pad = kernel 邊長 // 2）
+    2. 對輸入影像做 replicate padding（邊緣像素向外複製，避免邊界縮小）
+    3. 用雙層迴圈對每個輸出 pixel (i, j) 取出對應的鄰域，
+       與 kernel 做逐元素乘積後加總
     4. 輸出尺寸與輸入相同，數值 clip 到 0-255
     """
     h, w = img.shape
@@ -65,9 +69,11 @@ def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
     """
     生成 size×size 的 Gaussian kernel。
 
-    公式：G(x,y) = exp(-(x²+y²) / 2σ²)
-    其中 x, y 是相對中心的座標（中心為 0,0）。
-    生成後要正規化讓所有元素總和等於 1。
+    公式：
+        G(x, y) = exp(-(x² + y²) / (2σ²))
+
+    其中 x, y 是相對中心的座標（中心為 0,0，範圍為 -k ~ k，k = size // 2）。
+    生成後除以所有元素的總和做正規化，確保濾波不改變整體亮度。
     """
     k = size // 2
     kernel = np.zeros((size, size), dtype=np.float32)

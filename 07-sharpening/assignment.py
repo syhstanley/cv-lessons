@@ -37,13 +37,18 @@ def unsharp_masking(img: np.ndarray, radius: float, amount: float,
     """
     實作 Unsharp Masking（USM）銳化。
 
-    公式：Sharpened = Original + amount × (Original - GaussianBlur(Original))
-    其中 (Original - Blurred) 就是「高頻細節」部分。
+    公式：
+        HF(x, y)  = I(x, y) - GaussianBlur(I)(x, y)     （高頻細節）
+
+        HF_t(x,y) = HF(x, y)  if |HF(x, y)| ≥ threshold （threshold 抑制）
+                    0           otherwise
+
+        Output(x, y) = I(x, y) + amount × HF_t(x, y)
 
     步驟：
     1. 用指定 radius（sigma）對影像做 Gaussian blur
     2. 計算 high_freq = 原圖 - blur 後的圖
-    3. 若 threshold > 0，把絕對值小於 threshold 的 high_freq 設為 0（保護平坦區域）
+    3. 若 threshold > 0，把 |high_freq| < threshold 的位置設為 0（保護平坦區域）
     4. 結果 = 原圖 + amount × high_freq，clip 到 0-255
     """
     blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=radius)
@@ -93,9 +98,13 @@ def laplacian_sharpening(img: np.ndarray, k: float = 1.0) -> np.ndarray:
     """
     實作 Laplacian Sharpening。
 
-    公式：Sharpened = Original - k × Laplacian(Original)
-    用 cv2.Laplacian 計算二階導數，係數 k 控制銳化強度。
-    注意 Laplacian 的結果是 CV_64F，計算完再 clip 回 0-255。
+    公式：
+        L(x, y)      = ∇²I(x, y)           （二階導數，在邊緣有強響應）
+        Output(x, y) = I(x, y) - k · L(x, y)
+
+    用 cv2.Laplacian(img, cv2.CV_64F, ksize=3) 計算，
+    係數 k 控制銳化強度，過大會產生 ringing artifact。
+    計算完記得 clip 到 0-255 後轉 uint8。
     """
     lap = cv2.Laplacian(img, cv2.CV_64F, ksize=3)
     result = None  # TODO
@@ -127,12 +136,22 @@ def manual_histogram_eq(img: np.ndarray) -> np.ndarray:
     """
     手動實作 Histogram Equalization。
 
+    公式：
+        H(v)   = pixel 值為 v 的數量          （histogram）
+        CDF(v) = Σ_{k=0}^{v} H(k)            （累積分佈）
+
+        mapping(v) = round( (CDF(v) - CDF_min) / (N - CDF_min) × 255 )
+
+        其中 N = 總 pixel 數，CDF_min = CDF 中最小的非零值
+
+        Output(x, y) = mapping[ Input(x, y) ]
+
     步驟：
-    1. 統計每個灰度值（0-255）的 pixel 數，建立 histogram
-    2. 計算 CDF（cumulative distribution function）= np.cumsum(histogram)
-    3. 找 CDF 的最小非零值 cdf_min
-    4. 建立灰度映射：mapping = (cdf - cdf_min) / (total_pixels - cdf_min) × 255
-    5. 用映射表把原圖每個 pixel 值映射到新值
+    1. 統計每個灰度值（0-255）的 pixel 數，建立 histogram（長度 256 的 array）
+    2. 計算 CDF = np.cumsum(histogram)
+    3. 找 CDF_min（cdf[cdf > 0].min()）
+    4. 用公式建立 mapping table（長度 256，每個值對應新灰度）
+    5. 用 mapping[img] 做查表映射
     """
     hist = np.zeros(256, dtype=np.float32)
     # TODO: 統計每個灰度值的出現次數

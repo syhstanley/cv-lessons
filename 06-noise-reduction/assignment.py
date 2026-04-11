@@ -40,11 +40,18 @@ def iir_temporal_nr(frames: list, alpha: float) -> list:
     """
     實作簡單的 IIR Temporal NR。
 
-    公式：Output(t) = alpha × Input(t) + (1 - alpha) × Output(t-1)
-    - alpha 接近 1 → 依賴當前 frame（少降噪）
-    - alpha 接近 0 → 依賴歷史 frame（強降噪，但移動物體有拖影）
+    公式（IIR 低通濾波器）：
+        Y(t) = α · X(t) + (1 - α) · Y(t-1)
 
-    第一個 frame 沒有前一幀，直接輸出原始 frame。
+        X(t)   = 當前 noisy frame
+        Y(t)   = 當前輸出（降噪後）
+        Y(t-1) = 上一個輸出（歷史累積）
+        α      = blending factor（0 < α < 1）
+
+        α → 1 : 依賴當前 frame，降噪效果弱
+        α → 0 : 依賴歷史 frame，降噪效果強但移動物體有拖影
+
+    第一個 frame 沒有 Y(t-1)，直接令 Y(0) = X(0)。
     """
     results = []
     prev_output = None
@@ -95,9 +102,13 @@ def detect_motion(frame_curr: np.ndarray, frame_prev: np.ndarray,
     """
     用 frame difference 做 motion detection。
 
-    計算當前 frame 和前一 frame 的絕對差值，
-    差值超過 threshold 的位置視為有移動（True），否則為靜止（False）。
-    注意：計算差值時要先轉成 int32 避免 uint8 溢位。
+    公式：
+        diff(x, y) = |I_curr(x, y) - I_prev(x, y)|
+
+        motion_mask(x, y) = True   if diff(x, y) > threshold
+                            False  otherwise
+
+    注意：uint8 相減會溢位，要先轉成 int32 再取絕對值。
     """
     diff = None         # TODO: 計算絕對差值
     motion_mask = None  # TODO: diff > threshold
@@ -134,14 +145,20 @@ def motion_adaptive_temporal_nr(frames: list, alpha_static: float = 0.2,
     """
     實作 Motion-Adaptive Temporal NR。
 
-    對每個 pixel 根據是否有移動選擇不同的 alpha：
-    - 靜止區域：用 alpha_static（強降噪）
-    - 移動區域：用 alpha_motion = 1.0（完全用當前 frame，不混合，避免拖影）
+    公式：
+        α(x, y) = α_motion  if motion_mask(x, y) = True    （通常 α_motion = 1.0）
+                  α_static   otherwise                       （通常 α_static = 0.2）
+
+        Y(t, x, y) = α(x,y) · X(t, x,y) + (1 - α(x,y)) · Y(t-1, x,y)
+
+    效果：
+        靜止區域：α=0.2，強力時域混合 → 大幅降噪
+        移動區域：α=1.0，直接用當前 frame → 無拖影
 
     步驟：
-    1. 用 detect_motion 取得 motion mask
-    2. 根據 mask 建立 per-pixel 的 alpha_map（np.where）
-    3. output = alpha_map × current + (1 - alpha_map) × prev_output
+    1. 用 detect_motion 取得 motion mask（bool array）
+    2. 用 np.where 建立 per-pixel 的 alpha_map
+    3. 套用 IIR 公式計算 output
     """
     results = []
     prev_output = None

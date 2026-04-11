@@ -30,11 +30,18 @@ def manual_sobel(img: np.ndarray):
     """
     手動實作 Sobel edge detection，返回 (Gx, Gy, magnitude, direction)。
 
+    公式：
+        Gx = Kx ⊛ I    （水平方向卷積，偵測垂直邊緣）
+        Gy = Ky ⊛ I    （垂直方向卷積，偵測水平邊緣）
+
+        Magnitude = sqrt(Gx² + Gy²)
+        Direction = arctan2(Gy, Gx)   單位：degrees，範圍 -180 ~ 180
+
     步驟：
     1. 定義水平和垂直的 Sobel kernel（已提供）
     2. 對影像分別做卷積，得到 Gx 和 Gy（可用 cv2.filter2D）
-    3. Magnitude = sqrt(Gx² + Gy²)，clip 到 0-255
-    4. Direction = arctan2(Gy, Gx)，單位為 degrees（-180 ~ 180）
+    3. 計算 Magnitude，clip 到 0-255 後轉 uint8
+    4. 計算 Direction，用 np.degrees(np.arctan2(...)) 轉成角度
     """
     Kx = np.array([[-1, 0, 1],
                    [-2, 0, 2],
@@ -88,15 +95,23 @@ def non_maximum_suppression(magnitude: np.ndarray, direction: np.ndarray) -> np.
     """
     實作 Canny 的 Non-Maximum Suppression（邊緣細化）。
 
+    角度量化規則（angle = direction % 180）：
+
+        angle ∈ [0°, 22.5°) ∪ [157.5°, 180°]  → 水平，比較 (i, j-1) 和 (i, j+1)
+        angle ∈ [22.5°, 67.5°)                 → 45°，比較 (i+1, j-1) 和 (i-1, j+1)
+        angle ∈ [67.5°, 112.5°)                → 垂直，比較 (i-1, j) 和 (i+1, j)
+        angle ∈ [112.5°, 157.5°)               → 135°，比較 (i-1, j-1) 和 (i+1, j+1)
+
+    判斷條件：
+        if magnitude(i,j) >= neighbor1 AND magnitude(i,j) >= neighbor2:
+            result(i,j) = magnitude(i,j)   # 是局部最大值，保留
+        else:
+            result(i,j) = 0                # 非最大值，抑制
+
     步驟：
-    1. 把 gradient direction 轉到 0-180° 範圍（direction % 180）
-    2. 對每個非邊緣 pixel (i, j)，根據角度量化到最近的 45° 方向：
-       - 0°（或 180°）：水平方向，比較左右鄰居 (i, j-1) 和 (i, j+1)
-       - 45°：對角方向，比較 (i+1, j-1) 和 (i-1, j+1)
-       - 90°：垂直方向，比較 (i-1, j) 和 (i+1, j)
-       - 135°：對角方向，比較 (i-1, j-1) 和 (i+1, j+1)
-    3. 如果當前 pixel 的 magnitude 不是三者中最大，設為 0（抑制）
-    4. 跳過邊緣（第一行/列、最後行/列）
+    1. 把 direction 轉到 0-180° 範圍（direction % 180）
+    2. 雙層迴圈遍歷每個非邊界 pixel（跳過第 0 行/列和最後行/列）
+    3. 根據角度查表選鄰居，比較大小決定是否保留
     """
     h, w = magnitude.shape
     result = np.zeros_like(magnitude)
@@ -172,11 +187,17 @@ def task4_bonus_blur_detection(img):
     Realtek Camera Auto Focus 的評估方法：
     用 Laplacian variance 衡量影像的清晰度（越高 = 越清晰）。
 
+    公式：
+        Sharpness Score = Var(∇²I)
+                       = Var(Laplacian(I))
+
+        其中 Var 是 variance（方差），越高表示圖片邊緣越多、越清晰。
+
     步驟：
     1. 對同一張圖用不同 sigma（0, 1, 2, 4, 8, 16）做 Gaussian blur
-    2. 對每個模糊版本計算 Laplacian，再取 variance
-    3. 畫出 sigma vs sharpness score 的折線圖
-    4. 觀察並說明：score 如何隨模糊程度變化？
+    2. 對每個模糊版本用 cv2.Laplacian 計算拉普拉斯，再取 .var()
+    3. 畫出 sigma vs sharpness score 的折線圖並存檔
+    4. 觀察：score 如何隨模糊程度單調遞減？
     """
     print("=== Task 4 (Bonus): 模糊偵測 ===")
 

@@ -39,14 +39,20 @@ def task1_visualize_spectrum(img):
     """
     計算影像的 2D FFT 並視覺化頻譜。
 
+    公式：
+        F(u, v) = Σ_x Σ_y  f(x,y) · exp(-j2π(ux/M + vy/N))
+
+        Magnitude Spectrum = |F(u, v)|
+        Log Spectrum       = log(1 + |F(u, v)|)   （log1p 壓縮動態範圍）
+
     步驟：
-    1. 用 np.fft.fft2 計算 2D DFT
-    2. 用 np.fft.fftshift 把 DC 分量（低頻）移到圖中央
-    3. 取 magnitude（np.abs）
-    4. 用 log scale（np.log1p）壓縮動態範圍以便觀察
+    1. np.fft.fft2(img) → 計算 2D DFT
+    2. np.fft.fftshift(F) → 把 DC（低頻）移到圖中央
+    3. np.abs(F_shift) → 取 magnitude
+    4. np.log1p(magnitude) → log scale，讓暗部細節可見
     5. 顯示原圖和頻譜並存檔
 
-    觀察：頻譜中心是什麼？邊緣是什麼？
+    觀察：頻譜中心是低頻（平均亮度），邊緣是高頻（細節、邊緣、噪聲）。
     """
     print("=== Task 1: FFT 頻譜視覺化 ===")
 
@@ -79,7 +85,13 @@ def make_ideal_lpf(shape, cutoff):
     """
     生成 Ideal Low-Pass Filter mask。
 
-    對頻譜中每個點，計算它到中心的距離，
+    公式：
+        D(u, v) = sqrt((u - cy)² + (v - cx)²)   （距頻譜中心的距離）
+
+        H(u, v) = 1  if D(u, v) ≤ cutoff
+                  0  otherwise
+
+    對頻譜中每個點計算到中心 (cy, cx) 的距離，
     距離 ≤ cutoff 的設為 1（保留），其他設為 0（濾除）。
     返回 float32 的 2D mask。
     """
@@ -95,8 +107,13 @@ def make_gaussian_lpf(shape, sigma):
     """
     生成 Gaussian Low-Pass Filter mask。
 
-    H(u,v) = exp(-D²(u,v) / 2σ²)
-    其中 D 是到中心的距離，σ 控制截止頻率寬度。
+    公式：
+        D²(u, v) = (u - cy)² + (v - cx)²
+
+        H(u, v) = exp(-D²(u, v) / (2σ²))
+
+    σ 越大 → 截止頻率越高 → 保留更多高頻 → 越清晰
+    σ 越小 → 截止頻率越低 → 更模糊，與 Gaussian blur 等效
     """
     h, w = shape
     cy, cx = h // 2, w // 2
@@ -110,7 +127,13 @@ def apply_freq_filter(img, mask):
     """
     在頻域套用 mask，返回過濾後的空間域影像。
 
-    步驟：fft2 → fftshift → 乘 mask → ifftshift → ifft2 → 取實部 → clip
+    流程（Convolution Theorem）：
+        F = FFT2(f)                   1. 空間域 → 頻域
+        F_shift = fftshift(F)         2. DC 移到中心
+        G_shift = H × F_shift         3. 頻域乘法 = 空間域卷積
+        G = ifftshift(G_shift)        4. DC 移回原位
+        g = Re[ IFFT2(G) ]            5. 逆 DFT，取實部
+        output = clip(g, 0, 255)      6. 轉回 uint8
     """
     F = np.fft.fft2(img.astype(np.float32))
     F_shift = np.fft.fftshift(F)
