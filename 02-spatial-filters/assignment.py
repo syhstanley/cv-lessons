@@ -20,8 +20,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-02/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/02-spatial-filters/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.png")
 
 
 def _ensure_sample_image():
@@ -81,10 +81,14 @@ def manual_convolve2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     kh, kw = kernel.shape
     pad_h, pad_w = kh // 2, kw // 2
 
-    padded = None  # TODO: 用 np.pad 做 replicate padding（mode='edge'）
+    padded = np.pad(img.astype(np.float32), ((pad_h, pad_h), (pad_w, pad_w)), mode='edge')  # TODO: 用 np.pad 做 replicate padding（mode='edge'）
     output = np.zeros_like(img, dtype=np.float32)
 
     # TODO: 雙層迴圈，對每個 (i, j) 取出對應鄰域，與 kernel 做逐元素乘積後 sum
+    for i in range(h):
+        for j in range(w):
+            neighbor = padded[i:i+kh, j:j+kw]
+            output[i, j] = np.sum(neighbor * kernel)
 
     return np.clip(output, 0, 255).astype(np.uint8)
 
@@ -104,8 +108,12 @@ def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
     """
     k = size // 2
     kernel = np.zeros((size, size), dtype=np.float32)
-
     # TODO: 用雙層迴圈填入每個位置的 Gaussian 值，再除以總和正規化
+    for i in range(size):
+        for j in range(size):
+            x, y = i-k, j-k
+            kernel[i, j] = np.exp(-(x**2+y**2)/(2*sigma**2))
+    kernel = kernel / np.sum(kernel)
 
     return kernel
 
@@ -120,11 +128,11 @@ def task2_gaussian(img_noisy_gaussian):
     result_7 = manual_convolve2d(img_noisy_gaussian, kernel_7)
     cv_result = cv2.GaussianBlur(img_noisy_gaussian, (7, 7), sigmaX=2.0)
 
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4))
     for ax, title, im in zip(
         axes,
-        ["Noisy (Gaussian)", "Blur σ=1 3×3", "Blur σ=2 7×7", "OpenCV GaussianBlur"],
-        [img_noisy_gaussian, result_3, result_7, cv_result]
+        ["Original","Noisy (Gaussian)", "Blur σ=1 3×3", "Blur σ=2 7×7", "OpenCV GaussianBlur"],
+        [img, img_noisy_gaussian, result_3, result_7, cv_result]
     ):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
         ax.set_title(title)
@@ -147,8 +155,13 @@ def manual_median_filter(img: np.ndarray, ksize: int) -> np.ndarray:
     h, w = img.shape
     pad = ksize // 2
     output = np.zeros_like(img)
+    padded = np.pad(img, pad, mode='edge')
 
     # TODO: 實作上述步驟
+    for i in range(h):
+        for j in range(w):
+            neighbor = padded[i:i+ksize, j:j+ksize]
+            output[i,j] = np.median(neighbor)
 
     return output
 
@@ -217,8 +230,41 @@ def task5_bonus_separable_gaussian(img):
     📐 Separability 數學證明（G(x,y) = G(x)·G(y)）見 ../formula_prove.md P2
     """
     print("=== Task 5 (Bonus): Separable Gaussian ===")
-    print("  → TODO: 驗證 separable 性質")
+    size, sigma = 7, 2.0
+    k = size//2
 
+    # 1D kernel
+    kernel_1d = np.array([np.exp(-x**2/(2*sigma**2)) for x in range(-k, k+1)], dtype=np.float32)
+    kernel_1d /= kernel_1d.sum()
+
+    # 2D kernel
+    kernel_2d = gaussian_kernel(size, sigma)
+
+    # seperalble
+    img_f = img.astype(np.float32)
+    img_tmp = cv2.filter2D(img_f, -1, kernel_1d.reshape(1, -1))
+    img_sep = cv2.filter2D(img_tmp, -1, kernel_1d.reshape(-1, 1))
+
+    # direct
+    img_dir = cv2.filter2D(img_f, -1, kernel_2d)
+
+    # compare
+    diff = 255-np.abs(img_sep - img_dir)
+
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    axes[0, 0].imshow(img, cmap='gray', vmin=0, vmax=255)
+    axes[0, 0].set_title("Original")
+    axes[0, 1].imshow(img_tmp, cmap='gray', vmin=0, vmax=255)
+    axes[0, 1].set_title("Sep - Horizontal")
+    axes[0, 2].imshow(img_sep, cmap='gray', vmin=0, vmax=255)
+    axes[0, 2].set_title("Sep - All")
+    axes[1, 2].imshow(img_dir, cmap='gray', vmin=0, vmax=255)
+    axes[1, 2].set_title("Direct")
+    axes[1, 3].imshow(diff, cmap='gray', vmin=0, vmax=255)
+    axes[1, 3].set_title("Difference")
+    plt.savefig("output/task5_bonus_separable_gaussian.png", dpi=120, bbox_inches='tight')
+    plt.close()
+    print("  → output/task5_bonus_separable_gaussian.png")
 
 # ── Main ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
