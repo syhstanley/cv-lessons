@@ -18,8 +18,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-04/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/04-isp-pipeline/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.png")
 
 
 def _ensure_sample_image():
@@ -32,8 +32,8 @@ def _ensure_sample_image():
             print(f"  → 下載失敗（{e}），改用合成圖")
 
 
-def generate_bayer_raw(size=512):
-    """用真實彩色圖生成 Bayer RGGB raw image，沒圖時 fallback 到合成色塊"""
+def generate_bayer_raw(size=256):
+    """下載真實灰階圖，沒網路時 fallback 到合成圖"""
     _ensure_sample_image()
     rgb = None
     if os.path.exists(_SAMPLE_PATH):
@@ -91,13 +91,43 @@ def bilinear_demosaic(bayer: np.ndarray) -> np.ndarray:
     G_known = np.zeros((h, w), dtype=np.float32)
     B_known = np.zeros((h, w), dtype=np.float32)
 
+    # R G
+    # G B
     R_known[0::2, 0::2] = bayer[0::2, 0::2]
     G_known[0::2, 1::2] = bayer[0::2, 1::2]
     G_known[1::2, 0::2] = bayer[1::2, 0::2]
     B_known[1::2, 1::2] = bayer[1::2, 1::2]
 
     # TODO: 對每個 channel 設計並套用插值 kernel
-    # 最後填入 rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    R_pad = np.pad(R_known, 1, mode='reflect')
+    G_pad = np.pad(G_known, 1, mode='reflect')
+    B_pad = np.pad(B_known, 1, mode='reflect')
+    for i in range(h):
+        for j in range(w):
+            pi, pj = i + 1, j + 1
+            # R
+            if i%2==0 and j%2==0: 
+                pass
+            elif i%2==1 and j%2==1:
+                R_known[i, j] = (R_pad[pi-1, pj-1]+R_pad[pi+1, pj-1]+R_pad[pi-1, pj+1]+R_pad[pi+1, pj+1])/4
+            elif i%2==1 and j%2==0:
+                R_known[i, j] = (R_pad[pi-1, pj]+R_pad[pi+1, pj])/2
+            else:
+                R_known[i, j] = (R_pad[pi, pj-1]+R_pad[pi, pj+1])/2
+            
+            # G
+            if (i%2==0 and j%2==0) or (i%2==1 and j%2==1): 
+                G_known[i, j] = (G_pad[pi-1, pj]+G_pad[pi+1, pj]+G_pad[pi, pj-1]+G_pad[pi, pj+1])/4
+            # B
+            if i%2==1 and j%2==1: 
+                pass
+            elif i%2==0 and j%2==0:
+                B_known[i, j] = (B_pad[pi-1, pj-1]+B_pad[pi+1, pj-1]+B_pad[pi-1, pj+1]+B_pad[pi+1, pj+1])/4
+            elif i%2==0 and j%2==1:
+                B_known[i, j] = (B_pad[pi-1, pj]+B_pad[pi+1, pj])/2
+            else:
+                B_known[i, j] = (B_pad[pi, pj-1]+B_pad[pi, pj+1])/2
+    rgb = np.stack([R_known, G_known, B_known], axis=2)
 
     return np.clip(rgb, 0, 255).astype(np.uint8)
 
@@ -154,12 +184,15 @@ def gray_world_white_balance(img_rgb: np.ndarray) -> np.ndarray:
     mean_b = img_float[:,:,2].mean()
     mean_all = (mean_r + mean_g + mean_b) / 3
 
-    gain_r = None  # TODO
-    gain_g = None  # TODO
-    gain_b = None  # TODO
+    gain_r = mean_all/ mean_r  # TODO
+    gain_g = 1.0  # TODO
+    gain_b = mean_all/mean_b  # TODO
 
     result = img_float.copy()
     # TODO: 把增益乘到對應 channel
+    result[:, :, 0] = np.clip(result[:, :, 0]*gain_r, 0, 255)
+    result[:, :, 1] = np.clip(result[:, :, 1]*gain_g, 0, 255)
+    result[:, :, 2] = np.clip(result[:, :, 2]*gain_b, 0, 255)
 
     return np.clip(result, 0, 255).astype(np.uint8)
 
@@ -187,8 +220,6 @@ def task2_white_balance(img_rgb):
     plt.close()
     print("  → output/task2_white_balance.png")
 
-    return result
-
 
 # ── Task 3：Gamma Correction ─────────────────────────────────────────────
 def apply_gamma(img: np.ndarray, gamma: float) -> np.ndarray:
@@ -209,8 +240,9 @@ def apply_gamma(img: np.ndarray, gamma: float) -> np.ndarray:
     📐 為什麼 γ=2.2 符合人眼感知，見 ../formula_prove.md P9
     """
     img_float = img.astype(np.float32) / 255.0
-    result = None  # TODO
-    return np.clip(result, 0, 255).astype(np.uint8) if result is not None else img
+    result = np.power(img_float, 1.0/gamma)*255  # TODO
+
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
 def task3_gamma(img_rgb):
@@ -256,7 +288,30 @@ def task4_bonus_full_pipeline(bayer, gt_rgb):
         return 20 * np.log10(255.0 / np.sqrt(mse)) if mse > 0 else float('inf')
 
     # TODO: 串接 pipeline 並在每個 stage 後計算 PSNR
-    print("  → TODO: 串接 pipeline，計算各 stage 的 PSNR")
+    step1 = bilinear_demosaic(bayer)
+    step2 = gray_world_white_balance(step1)
+    step3 = apply_gamma(step2, gamma=2.2)
+
+    psrn0 = psnr(np.stack([bayer,bayer,bayer],2), gt_rgb)
+    psrn1 = psnr(step1, gt_rgb)
+    psrn2 = psnr(step2, gt_rgb)
+    psrn3 = psnr(step3, gt_rgb)
+
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4))
+    for ax, (im, title, cmap) in zip(axes, [
+        (bayer, f"Bayer Raw: PSRN = {psrn0:.2f}", 'gray'),
+        (gt_rgb, "Ground Truth", None),
+        (step1, f"①Demosaic: PSRN = {psrn1:.2f}", None),
+        (step2, f"②+WB: PSRN = {psrn2:.2f}", None),
+        (step3, f"③+Gamma: PSRN = {psrn3:.2f}", None),
+    ]):
+        ax.imshow(im, cmap=cmap)
+        ax.set_title(title)
+        ax.axis('off')
+    plt.savefig("output_ans/task4_full_pipeline.png", dpi=120, bbox_inches='tight')
+    plt.close()
+    print("  → output_ans/task4_full_pipeline.png")
+
 
 
 # ── Main ─────────────────────────────────────────────────────────────────

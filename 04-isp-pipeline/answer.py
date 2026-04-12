@@ -9,24 +9,50 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-os.makedirs("output", exist_ok=True)
+os.makedirs("output_ans", exist_ok=True)
+
+_SAMPLE_URL  = "/home/stanley/cv-lessons/04-isp-pipeline/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.png")
+
+
+def _ensure_sample_image():
+    if not os.path.exists(_SAMPLE_PATH):
+        print("  → 下載 sample image（只需一次）...")
+        try:
+            urllib.request.urlretrieve(_SAMPLE_URL, _SAMPLE_PATH)
+            print(f"  → 已儲存至 {_SAMPLE_PATH}")
+        except Exception as e:
+            print(f"  → 下載失敗（{e}），改用合成圖")
 
 
 def generate_bayer_raw(size=256):
-    rgb = np.zeros((size, size, 3), dtype=np.uint8)
-    rgb[:, :size//3] = [200, 50, 50]
-    rgb[:, size//3:2*size//3] = [50, 200, 50]
-    rgb[:, 2*size//3:] = [50, 50, 200]
-    rgb[80:180, 80:180] = [220, 220, 220]
+    """下載真實灰階圖，沒網路時 fallback 到合成圖"""
+    _ensure_sample_image()
+    rgb = None
+    if os.path.exists(_SAMPLE_PATH):
+        img = cv2.imread(_SAMPLE_PATH)
+        if img is not None:
+            img = cv2.resize(img, (size, size))
+            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+    if rgb is None:
+        # fallback：三色色塊
+        rgb = np.zeros((size, size, 3), dtype=np.uint8)
+        rgb[:, :size//3] = [200, 50, 50]
+        rgb[:, size//3:2*size//3] = [50, 200, 50]
+        rgb[:, 2*size//3:] = [50, 50, 200]
+        rgb[size//4:3*size//4, size//4:3*size//4] = [220, 220, 220]
+
+    # 加上感測器模擬噪聲
     noise = np.random.normal(0, 5, rgb.shape).astype(np.int16)
     rgb = np.clip(rgb.astype(np.int16) + noise, 0, 255).astype(np.uint8)
 
+    # RGGB pattern: R at (even,even), G at (even,odd)+(odd,even), B at (odd,odd)
     bayer = np.zeros((size, size), dtype=np.uint8)
-    bayer[0::2, 0::2] = rgb[0::2, 0::2, 0]  # R
-    bayer[0::2, 1::2] = rgb[0::2, 1::2, 1]  # G
-    bayer[1::2, 0::2] = rgb[1::2, 0::2, 1]  # G
-    bayer[1::2, 1::2] = rgb[1::2, 1::2, 2]  # B
+    bayer[0::2, 0::2] = rgb[0::2, 0::2, 0]
+    bayer[0::2, 1::2] = rgb[0::2, 1::2, 1]
+    bayer[1::2, 0::2] = rgb[1::2, 0::2, 1]
+    bayer[1::2, 1::2] = rgb[1::2, 1::2, 2]
 
     return bayer, rgb
 
@@ -110,9 +136,9 @@ def task1_demosaic(bayer, gt_rgb):
         ax.imshow(im, cmap=cmap)
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task1_demosaic.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task1_demosaic.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task1_demosaic.png")
+    print("  → output_ans/task1_demosaic.png")
 
     return result
 
@@ -159,9 +185,9 @@ def task2_white_balance(img_rgb):
         ax.imshow(im)
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task2_white_balance.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task2_white_balance.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task2_white_balance.png")
+    print("  → output_ans/task2_white_balance.png")
 
     return result
 
@@ -193,9 +219,9 @@ def task3_gamma(img_rgb):
         ax.imshow(im)
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task3_gamma.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task3_gamma.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task3_gamma.png")
+    print("  → output_ans/task3_gamma.png")
 
 
 # ── Task 4（Bonus）：完整 Mini-ISP Pipeline ────────────────────────────
@@ -227,9 +253,9 @@ def task4_bonus_full_pipeline(bayer, gt_rgb):
         ax.imshow(im, cmap=cmap)
         ax.set_title(title)
         ax.axis('off')
-    plt.savefig("output/task4_full_pipeline.png", dpi=120, bbox_inches='tight')
+    plt.savefig("output_ans/task4_full_pipeline.png", dpi=120, bbox_inches='tight')
     plt.close()
-    print("  → output/task4_full_pipeline.png")
+    print("  → output_ans/task4_full_pipeline.png")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -242,4 +268,4 @@ if __name__ == "__main__":
     task3_gamma(demosaiced)
     task4_bonus_full_pipeline(bayer, gt_rgb)
 
-    print("\n完成！查看 output/ 資料夾。")
+    print("\n完成！查看 output_ans/ 資料夾。")
