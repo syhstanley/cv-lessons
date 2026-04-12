@@ -19,8 +19,8 @@ import urllib.request
 os.makedirs("output", exist_ok=True)
 
 # 建築/結構類圖片邊緣效果最明顯
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-03/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/03-edge-detection/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.png")
 
 
 def _ensure_sample_image():
@@ -34,7 +34,7 @@ def _ensure_sample_image():
 
 
 def load_or_generate_image():
-    """下載真實灰階圖，沒網路時 fallback 到幾何合成圖"""
+    """下載真實灰階圖，沒網路時 fallback 到合成圖"""
     _ensure_sample_image()
     if os.path.exists(_SAMPLE_PATH):
         img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
@@ -76,10 +76,12 @@ def manual_sobel(img: np.ndarray):
                    [ 0,  0,  0],
                    [ 1,  2,  1]], dtype=np.float32)
 
-    Gx = None  # TODO
-    Gy = None  # TODO
-    magnitude = None  # TODO
-    direction = None  # TODO
+    Gx = cv2.filter2D(img, -1, Kx)  # TODO
+    Gy = cv2.filter2D(img, -1, Ky)  # TODO
+    magnitude = np.sqrt(Gx**2 + Gy**2)  # TODO
+    magnitude = np.clip(magnitude, 0, 255).astype(np.uint8)
+
+    direction = np.degrees(np.arctan2(Gy,Gx))  # TODO
 
     return Gx, Gy, magnitude, direction
 
@@ -97,11 +99,11 @@ def task1_sobel(img):
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     data = [
         (img, "Original"),
-        (Gx, "Gx (manual)") if Gx is not None else (np.zeros_like(img), "Gx (TODO)"),
-        (Gy, "Gy (manual)") if Gy is not None else (np.zeros_like(img), "Gy (TODO)"),
-        (mag, "Magnitude (manual)") if mag is not None else (np.zeros_like(img), "Magnitude (TODO)"),
-        (cv_mag, "Magnitude (OpenCV)"),
-        (direction, "Direction") if direction is not None else (np.zeros_like(img), "Direction (TODO)"),
+        (255-Gx, "Gx (manual)") if Gx is not None else (np.zeros_like(img), "Gx (TODO)"),
+        (255-Gy, "Gy (manual)") if Gy is not None else (np.zeros_like(img), "Gy (TODO)"),
+        (255-mag, "Magnitude (manual)") if mag is not None else (np.zeros_like(img), "Magnitude (TODO)"),
+        (255-cv_mag, "Magnitude (OpenCV)"),
+        (255-direction, "Direction") if direction is not None else (np.zeros_like(img), "Direction (TODO)"),
     ]
     for ax, (im, title) in zip(axes.flat, data):
         if im is not None and im.ndim == 2:
@@ -142,6 +144,21 @@ def non_maximum_suppression(magnitude: np.ndarray, direction: np.ndarray) -> np.
     result = np.zeros_like(magnitude)
 
     # TODO: 實作上述邏輯
+    for i in range(1, h-1):
+        for j in range(1, w-1):
+            angle = direction[i, j]%180
+            if angle < 22.5 or angle>=157.5:
+                if magnitude[i,j]>=magnitude[i, j-1] and magnitude[i,j]>=magnitude[i, j+1]:
+                    result[i, j] = magnitude[i, j]
+            elif angle < 67.5:
+                if magnitude[i,j]>=magnitude[i+1, j-1] and magnitude[i,j]>=magnitude[i-1, j+1]:
+                    result[i, j] = magnitude[i, j]
+            elif angle < 112.5:
+                if magnitude[i,j]>=magnitude[i-1, j] and magnitude[i,j]>=magnitude[i+1, j]:
+                    result[i, j] = magnitude[i, j]
+            else:
+                if magnitude[i,j]>=magnitude[i-1, j-1] and magnitude[i,j]>=magnitude[i+1, j+1]:
+                    result[i, j] = magnitude[i, j]
 
     return result
 
@@ -157,9 +174,9 @@ def task2_nms(mag, direction):
     nms_result = non_maximum_suppression(mag_norm.astype(np.float32), direction)
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].imshow(mag_norm, cmap='gray')
+    axes[0].imshow(255-mag_norm, cmap='gray')
     axes[0].set_title("Magnitude (before NMS)")
-    axes[1].imshow(nms_result, cmap='gray')
+    axes[1].imshow(255-nms_result, cmap='gray')
     axes[1].set_title("After NMS (edges thinned)")
     for ax in axes:
         ax.axis('off')
@@ -197,7 +214,7 @@ def task3_canny_full(img):
 
     for ax, (lo, hi, title) in zip(axes[1:], configs):
         edges = cv2.Canny(img_blur, lo, hi)
-        ax.imshow(edges, cmap='gray')
+        ax.imshow(255-edges, cmap='gray')
         ax.set_title(title)
         ax.axis('off')
 
@@ -234,11 +251,43 @@ def task4_bonus_blur_detection(img):
     for sigma in sigmas:
         blurred = img if sigma == 0 else cv2.GaussianBlur(img, (0, 0), sigmaX=sigma)
         lap = cv2.Laplacian(blurred, cv2.CV_64F)
-        score = None  # TODO: 計算 Laplacian 的 variance
-        scores.append(score)
+        scores.append(lap.var())
 
-    # TODO: 用 matplotlib 畫出 sigma vs score 的折線圖並存檔
-    print("  → TODO: 完成模糊程度 vs Laplacian variance 曲線")
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    axes[0].plot(sigmas, scores, 'o-', color='steelblue')
+    axes[0].set_xlabel("Blur sigma")
+    axes[0].set_ylabel("Laplacian Variance (Sharpness Score)")
+    axes[0].set_title("Sharpness vs Blur Level")
+    axes[0].grid(True)
+
+    # 視覺化不同模糊程度
+    sample_sigmas = [0, 2, 8]
+    for i, s in enumerate(sample_sigmas):
+        blurred = img if s == 0 else cv2.GaussianBlur(img, (0, 0), sigmaX=s)
+
+    axes[1].bar([str(s) for s in sigmas], scores, color='steelblue')
+    axes[1].set_xlabel("Blur sigma")
+    axes[1].set_ylabel("Sharpness Score")
+    axes[1].set_title("Bar Chart: Sharpness Score")
+
+    plt.savefig("output/task4_blur_detection.png", dpi=120, bbox_inches='tight')
+    plt.close()
+    print("  → output/task4_blur_detection.png")
+
+    # Original vs blurred versions (same sigmas as the score sweep, minus duplicate display for σ=0)
+    preview_sigmas = [0, 1, 2, 4, 8, 16]
+    ncols = len(preview_sigmas)
+    fig_img, ax_img = plt.subplots(1, ncols, figsize=(3 * ncols, 4))
+    for ax, s in zip(np.atleast_1d(ax_img).ravel(), preview_sigmas):
+        blurred = img if s == 0 else cv2.GaussianBlur(img, (0, 0), sigmaX=s)
+        ax.imshow(blurred, cmap="gray")
+        ax.set_title("Original" if s == 0 else f"Blur σ={s}")
+        ax.axis("off")
+    plt.savefig("output/task4_blur_images.png", dpi=120, bbox_inches="tight")
+    plt.close()
+    print("  → output/task4_blur_images.png")
+
+    print(f"  sigma=0 score: {scores[0]:.1f}, sigma=16 score: {scores[-1]:.1f}")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
