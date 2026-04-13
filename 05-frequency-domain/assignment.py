@@ -19,8 +19,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-05/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/05-frequency-domain/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test.png")
 
 
 def _ensure_sample_image():
@@ -79,23 +79,38 @@ def task1_visualize_spectrum(img):
     """
     print("=== Task 1: FFT 頻譜視覺化 ===")
 
-    F = None        # TODO: 計算 FFT
-    F_shift = None  # TODO: fftshift
-    magnitude = None       # TODO: np.abs
-    log_magnitude = None   # TODO: np.log1p
+    F = np.fft.fft2(img)        # TODO: 計算 FFT
+    F_shift = np.fft.fftshift(F)  # TODO: fftshift
+    magnitude = np.abs(F_shift)      # TODO: np.abs
+    log_magnitude = np.log1p(magnitude)   # TODO: np.log1p
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].imshow(img, cmap='gray')
-    axes[0].set_title("Original Image")
+    fig, axes = plt.subplots(2, 3, figsize=(12, 8))
+    ax = axes.ravel()
 
-    if log_magnitude is not None:
-        axes[1].imshow(log_magnitude, cmap='hot')
-        axes[1].set_title("FFT Magnitude Spectrum (log)")
-    else:
-        axes[1].set_title("TODO: 計算頻譜")
+    ax[0].imshow(img, cmap='gray')
+    ax[0].set_title("Original")
 
-    for ax in axes:
-        ax.axis('off')
+    # Complex F / F_shift → display magnitude (log1p compresses dynamic range)
+    ax[1].imshow(np.log1p(np.abs(F)), cmap='hot')
+    ax[1].set_title(r"$|F|$ (fft2, log1p)")
+
+    ax[2].imshow(np.log1p(np.abs(F_shift)), cmap='hot')
+    ax[2].set_title(r"$|F_{\mathrm{shift}}|$ (log1p)")
+
+    # Linear |F|: dynamic range is huge (DC ≫ other bins). Full-range imshow maps
+    # almost everything to the bottom of the colormap → looks all black. Clip vmax
+    # for display only (data in `magnitude` is unchanged).
+    vmax_lin = float(np.percentile(magnitude, 99.9))
+    ax[3].imshow(magnitude, cmap='hot', vmin=0, vmax=vmax_lin)
+    ax[3].set_title(r"Magnitude (linear, vmax = 99.9th pct.)")
+
+    ax[4].imshow(log_magnitude, cmap='hot')
+    ax[4].set_title(r"log1p(magnitude)")
+
+    ax[5].set_visible(False)
+
+    for a in ax[:5]:
+        a.axis('off')
     plt.savefig("output/task1_spectrum.png", dpi=120, bbox_inches='tight')
     plt.close()
     print("  → output/task1_spectrum.png")
@@ -123,8 +138,8 @@ def make_ideal_lpf(shape, cutoff):
     h, w = shape
     cy, cx = h // 2, w // 2
     Y, X = np.ogrid[:h, :w]
-    dist = None   # TODO: 計算每點到 (cy, cx) 的距離
-    mask = None   # TODO: 距離 ≤ cutoff 的位置為 1
+    dist = np.sqrt((Y-cy)**2 + (X-cx)**2)   # TODO: 計算每點到 (cy, cx) 的距離
+    mask = np.where(dist<=cutoff, 1, 0)   # TODO: 距離 ≤ cutoff 的位置為 1
     return mask
 
 
@@ -145,8 +160,8 @@ def make_gaussian_lpf(shape, sigma):
     h, w = shape
     cy, cx = h // 2, w // 2
     Y, X = np.ogrid[:h, :w]
-    dist_sq = None  # TODO: (Y-cy)² + (X-cx)²
-    mask = None     # TODO: exp(-dist_sq / (2*sigma²))
+    dist_sq = (Y-cy)**2 + (X-cx)**2  # TODO: (Y-cy)² + (X-cx)²
+    mask = np.exp(-dist_sq/(2*sigma**2))     # TODO: exp(-dist_sq / (2*sigma²))
     return mask
 
 
@@ -165,7 +180,7 @@ def apply_freq_filter(img, mask):
     F = np.fft.fft2(img.astype(np.float32))
     F_shift = np.fft.fftshift(F)
 
-    G_shift = None  # TODO: F_shift × mask
+    G_shift = F_shift * mask  # TODO: F_shift × mask
 
     if G_shift is None:
         return img
@@ -188,8 +203,8 @@ def task2_lpf(img):
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
         (img, "Original"),
-        (ideal_result, "Ideal LPF (r=30)\n觀察 ringing"),
-        (gauss_result, "Gaussian LPF (σ=30)\n無 ringing"),
+        (ideal_result, "Ideal LPF (r=30)\nObserve ringing"),
+        (gauss_result, "Gaussian LPF (sigma=30)\nNo ringing"),
         (cv2.GaussianBlur(img, (0,0), sigmaX=10), "cv2 Gaussian Blur"),
     ]):
         ax.imshow(im, cmap='gray')
@@ -222,17 +237,18 @@ def task3_hpf(img):
     lpf_result = apply_freq_filter(img, gauss_lpf)
     hpf_result = apply_freq_filter(img, gauss_hpf)
 
+    coeff = 0.8
     sharpened = np.clip(
-        img.astype(np.float32) + 0.5 * hpf_result.astype(np.float32),
+        img.astype(np.float32) + coeff * hpf_result.astype(np.float32),
         0, 255
     ).astype(np.uint8)
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
         (img, "Original"),
-        (lpf_result, "Gaussian LPF\n（低頻，模糊）"),
-        (hpf_result, "Gaussian HPF\n（高頻，邊緣）"),
-        (sharpened, "Original + 0.5×HPF\n（銳化）"),
+        (lpf_result, "Gaussian LPF\n(Low frequency, blurred)"),
+        (255-hpf_result, "Gaussian HPF\n(High frequency, edges)"),
+        (sharpened, f"Original + {coeff}xHPF\n(Sharpened)"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
         ax.set_title(title)
@@ -267,9 +283,16 @@ def task4_notch_filter(img):
 
     h, w = noisy.shape
     cy, cx = h // 2, w // 2
+    freq_bin = 20
 
     mask = np.ones((h, w), dtype=np.float32)
     # TODO: 在 (cy, cx+20) 和 (cy, cx-20) 附近半徑 4 的範圍設 mask=0
+    mask = np.ones((h, w), dtype=np.float32)
+    radius = 4
+    Y, X = np.ogrid[:h, :w]
+    for (dy, dx) in [(cy, cx+freq_bin), (cy, cx-freq_bin)]:
+        mask[np.sqrt((Y-dy)**2 + (X-dx)**2)<radius] = 0
+
 
     filtered_F = F_shift * mask
     result = np.fft.ifft2(np.fft.ifftshift(filtered_F)).real
@@ -278,11 +301,11 @@ def task4_notch_filter(img):
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     for ax, (im, title, cmap) in zip(axes.flat, [
         (img, "Original", 'gray'),
-        (noisy, "Noisy (週期性干擾)", 'gray'),
+        (noisy, "Noisy (Periodic noise)", 'gray'),
         (result, "After Notch Filter", 'gray'),
-        (magnitude, "Noisy 頻譜", 'hot'),
-        (np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(img.astype(np.float32))))), "原始頻譜", 'hot'),
-        (np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(result.astype(np.float32))))), "濾波後頻譜", 'hot'),
+        (magnitude, "Noisy spectrum", 'hot'),
+        (np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(img.astype(np.float32))))), "Original spectrum", 'hot'),
+        (np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(result.astype(np.float32))))), "Filtered spectrum", 'hot'),
     ]):
         ax.imshow(im, cmap=cmap)
         ax.set_title(title)
