@@ -14,8 +14,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-08/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = ""
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.jpg")
 
 
 def _ensure_sample_image():
@@ -28,42 +28,26 @@ def _ensure_sample_image():
             print(f"  → 下載失敗（{e}），改用合成圖")
 
 
-def generate_interlaced_pair(size=512):
-    """
-    生成一對模擬 interlaced fields（使用真實圖作背景）：
-    奇數行 field 1 的前景物體在 x=120，偶數行 field 2 在 x=140（模擬運動）
-    """
-    _ensure_sample_image()
+def generate_interlaced_pair(size=256):
+    def make_frame(center_x):
+        img = np.ones((size, size), dtype=np.uint8) * 80
+        for i in range(0, size, 16):
+            img[i, :] = 60
+            img[:, i] = 60
 
-    bg = None
-    if os.path.exists(_SAMPLE_PATH):
-        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
-        if img is not None:
-            bg = cv2.resize(img, (size, size))
-
-    def make_frame(cx, background):
-        if background is not None:
-            img = background.copy()
-        else:
-            img = np.ones((size, size), dtype=np.uint8) * 80
-            for i in range(0, size, 16):
-                img[i, :] = 60
-                img[:, i] = 60
-        # 疊加一個移動的白色方塊作為前景運動物體
-        h_start, h_end = size // 3, 2 * size // 3
-        cv2.rectangle(img, (cx, h_start), (cx + 80, h_end), 240, -1)
-        cv2.rectangle(img, (cx + 8, h_start + 8), (cx + 72, h_end - 8), 180, -1)
+        cy = 130
+        r = 48
+        cv2.circle(img, (center_x, cy), r, 220, -1)
         return img
 
-    frame_odd  = make_frame(cx=120, background=bg)
-    frame_even = make_frame(cx=140, background=bg)
+    frame_odd = make_frame(center_x=90)
+    frame_even = make_frame(center_x=100)
 
     interlaced = np.zeros((size, size), dtype=np.uint8)
     interlaced[0::2, :] = frame_odd[0::2, :]
     interlaced[1::2, :] = frame_even[1::2, :]
 
     return interlaced, frame_odd, frame_even
-
 
 # ── Task 1：Bob Deinterlacing ────────────────────────────────────────────
 def bob_deinterlace(interlaced: np.ndarray, use_odd_field: bool = True) -> np.ndarray:
@@ -85,9 +69,19 @@ def bob_deinterlace(interlaced: np.ndarray, use_odd_field: bool = True) -> np.nd
     if use_odd_field:
         result[0::2, :] = interlaced[0::2, :]
         # TODO: 對偶數行做插值（上下奇數行的平均），處理最後一行的邊界
+        for i in range(1, h-1, 2):
+            result[i, :] = (result[i-1, :] + interlaced[i+1, :])/2
+        if h % 2 == 0:
+            result[h-1, :] = result[h-2, :]
+
     else:
         result[1::2, :] = interlaced[1::2, :]
         # TODO: 對奇數行做插值，處理第一行和最後一行的邊界
+        result[0, :] = interlaced[1, :]
+        for i in range(2, h-1, 2):
+            result[i, :] = (result[i-1, :] + interlaced[i+1, :])/2
+        if h % 2 == 1:
+            result[h-1, :] = result[h-2, :]
 
     return np.clip(result, 0, 255).astype(np.uint8)
 
@@ -100,10 +94,10 @@ def task1_bob(interlaced, frame_odd, frame_even):
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
-        (interlaced, "Interlaced\n（注意梳子狀）"),
-        (frame_odd, "Ground Truth\n（Odd field）"),
-        (bob_odd, "Bob（Odd field）"),
-        (bob_even, "Bob（Even field）"),
+        (interlaced, "Interlaced\n comb"),
+        (frame_odd, "Ground Truth\n Odd field"),
+        (bob_odd, "Bob Odd field"),
+        (bob_even, "Bob Even field"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
         ax.set_title(title)
@@ -131,6 +125,8 @@ def weave_deinterlace(field1: np.ndarray, field2: np.ndarray) -> np.ndarray:
     result = np.zeros((h, w), dtype=np.uint8)
 
     # TODO: 把 field1 的奇數行和 field2 的偶數行合入 result
+    result[0::2, :] = field1[0::2, :]
+    result[1::2, :] = field2[1::2, :]
 
     return result
 
@@ -143,9 +139,9 @@ def task2_weave(interlaced, frame_odd, frame_even):
     fig, axes = plt.subplots(1, 3, figsize=(12, 4))
     for ax, (im, title) in zip(axes, [
         (interlaced, "Interlaced"),
-        (weave_result, "Weave（靜態好，移動有 comb）"),
+        (weave_result, "Weave(static good, moving has comb)"),
         (np.abs(frame_odd.astype(int) - frame_even.astype(int)).astype(np.uint8),
-         "Field Difference（差異大 = 移動）"),
+         "Field Difference"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
         ax.set_title(title)
@@ -182,12 +178,12 @@ def motion_adaptive_deinterlace(interlaced: np.ndarray,
     bob = bob_deinterlace(interlaced, use_odd_field=True)
 
     diff = np.abs(field1.astype(np.int32) - field2.astype(np.int32))
-    motion_mask = None  # TODO: diff > motion_threshold
+    motion_mask = np.where(diff>motion_threshold, True, False)  # TODO: diff > motion_threshold
 
     if motion_mask is None:
         return weave
 
-    result = None  # TODO: np.where(motion_mask, bob, weave)
+    result = np.where(motion_mask, bob, weave)  # TODO: np.where(motion_mask, bob, weave)
     return result if result is not None else weave
 
 
@@ -202,9 +198,9 @@ def task3_adaptive(interlaced, frame_odd, frame_even):
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
         (frame_odd, "Odd Field"),
-        (weave, "Weave（有 comb）"),
+        (weave, "Weave comb"),
         (adaptive, "Motion-Adaptive"),
-        (diff * 3, "Motion Map ×3"),
+        (diff * 3, "Motion Map *3"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
         ax.set_title(title)
