@@ -17,8 +17,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-07/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = "/home/stanley/cv-lessons/07-sharpening/Image"
+_SAMPLE_PATH = os.path.join(_SAMPLE_URL, "test2.jpg")
 
 
 def _ensure_sample_image():
@@ -75,14 +75,15 @@ def unsharp_masking(img: np.ndarray, radius: float, amount: float,
     img_f = img.astype(np.float32)
     blurred_f = blurred.astype(np.float32)
 
-    high_freq = None  # TODO: 原圖 - 模糊圖
+    high_freq = img_f - blurred_f  # TODO: 原圖 - 模糊圖
 
     if high_freq is None:
         return img
 
     # TODO: 套用 threshold 抑制平坦區域
+    high_freq = np.where(np.abs(high_freq)<threshold, 0, high_freq)
 
-    result = None  # TODO: 原圖 + amount × high_freq
+    result = img_f + amount * high_freq  # TODO: 原圖 + amount × high_freq
 
     return np.clip(result, 0, 255).astype(np.uint8) if result is not None else img
 
@@ -92,12 +93,13 @@ def task1_usm(img_blur):
 
     configs = [
         (1.0, 1.0, 0, "radius=1, amount=1"),
-        (2.0, 1.5, 0, "radius=2, amount=1.5"),
-        (2.0, 2.5, 0, "radius=2, amount=2.5\n（過度銳化，注意 halo）"),
-        (2.0, 1.5, 15, "radius=2, amount=1.5\nthreshold=15"),
+        (1.0, 2, 0, "radius=1, amount=2"),
+        (2.0, 2, 0, "radius=2, amount=2"),
+        (2.0, 7, 0, "radius=2, amount=7\n(overly sharp, halo)"),
+        (2.0, 2, 8, "radius=2, amount=2\nthreshold=8"),
     ]
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig, axes = plt.subplots(1, 6, figsize=(15, 10))
     axes.flat[0].imshow(img_blur, cmap='gray', vmin=0, vmax=255)
     axes.flat[0].set_title("Input (blurred)")
     axes.flat[0].axis('off')
@@ -127,7 +129,7 @@ def laplacian_sharpening(img: np.ndarray, k: float = 1.0) -> np.ndarray:
     計算完記得 clip 到 0-255 後轉 uint8。
     """
     lap = cv2.Laplacian(img, cv2.CV_64F, ksize=3)
-    result = None  # TODO
+    result = img - k*lap  # TODO
     return np.clip(result, 0, 255).astype(np.uint8) if result is not None else img
 
 
@@ -138,7 +140,7 @@ def task2_laplacian(img_blur):
         "Blurred Input": img_blur,
         "k=0.5": laplacian_sharpening(img_blur, k=0.5),
         "k=1.0": laplacian_sharpening(img_blur, k=1.0),
-        "k=2.0（過度）": laplacian_sharpening(img_blur, k=2.0),
+        "k=2.0(over)": laplacian_sharpening(img_blur, k=2.0),
     }
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
@@ -177,13 +179,25 @@ def manual_histogram_eq(img: np.ndarray) -> np.ndarray:
     """
     hist = np.zeros(256, dtype=np.float32)
     # TODO: 統計每個灰度值的出現次數
+    for val in img.flat:
+        hist[val] += 1
 
-    cdf = None  # TODO: np.cumsum(hist)
+    cdf = np.cumsum(hist)  # TODO: np.cumsum(hist)
+    nonzero_cdf = cdf[cdf > 0]
+    if nonzero_cdf.size == 0:
+        return img
 
-    # TODO: 正規化 CDF 並建立映射表，再對原圖做映射
-    result = None
+    cdf_min = nonzero_cdf.min()
+    denominator = img.size - cdf_min
+    if denominator <= 0:
+        return img.copy()
 
-    return result if result is not None else img
+    # Build LUT and remap the original image.
+    mapping = np.round((cdf - cdf_min) / denominator * 255)
+    mapping = np.clip(mapping, 0, 255).astype(np.uint8)
+    result = mapping[img]
+
+    return result
 
 
 def task3_histogram_eq(img):
@@ -231,9 +245,9 @@ def task4_bonus_edge_adaptive(img_blur):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     edge_mask = cv2.dilate(edges, kernel)
 
-    sharpened = unsharp_masking(img_blur, radius=2.0, amount=1.5)
+    sharpened = unsharp_masking(img_blur, radius=2.0, amount=4)
 
-    result = None  # TODO: np.where(edge_mask > 0, sharpened, img_blur)
+    result = np.where(edge_mask>0,  sharpened, img_blur)  # TODO: np.where(edge_mask > 0, sharpened, img_blur)
 
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
