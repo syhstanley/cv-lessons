@@ -17,8 +17,8 @@ import urllib.request
 
 os.makedirs("output", exist_ok=True)
 
-_SAMPLE_URL  = "https://picsum.photos/seed/cv-lesson-06/512/512"
-_SAMPLE_PATH = "sample.jpg"
+_SAMPLE_URL  = None
+_SAMPLE_PATH = None
 
 
 def _ensure_sample_image():
@@ -36,14 +36,14 @@ def generate_video_sequence(num_frames=10, size=256):
     生成模擬影片：真實圖片背景 + 移動白色方塊 + Gaussian noise
     背景使用下載的 sample image（灰階），讓 Temporal NR 效果更真實可見。
     """
-    _ensure_sample_image()
+    #_ensure_sample_image()
 
     # 嘗試載入真實圖作為背景
     bg = None
-    if os.path.exists(_SAMPLE_PATH):
-        img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
-        if img is not None:
-            bg = cv2.resize(img, (size, size)).astype(np.float32)
+    # if os.path.exists(_SAMPLE_PATH):
+    #     img = cv2.imread(_SAMPLE_PATH, cv2.IMREAD_GRAYSCALE)
+    #     if img is not None:
+    #         bg = cv2.resize(img, (size, size)).astype(np.float32)
 
     if bg is None:
         # fallback：格線合成背景
@@ -67,7 +67,23 @@ def generate_video_sequence(num_frames=10, size=256):
 
     return frames
 
+def generate_clean_sequence(num_frames=10, size=256):
+    """生成無噪聲的 clean frames，用於 PSNR 計算"""
+    frames = []
+    bg = np.ones((size, size), dtype=np.float32) * 100
+    for i in range(0, size, 20):
+        bg[i, :] = 80
+        bg[:, i] = 80
 
+    for t in range(num_frames):
+        frame = bg.copy()
+        cx = 50 + t * 15
+        cy = 128
+        Y, X = np.ogrid[:size, :size]
+        frame[(X - cx)**2 + (Y - cy)**2 < 25**2] = 220
+        frames.append(np.clip(frame, 0, 255).astype(np.uint8))
+
+    return frames
 # ── Task 1：Simple IIR Temporal NR ──────────────────────────────────────
 def iir_temporal_nr(frames: list, alpha: float) -> list:
     """
@@ -96,7 +112,7 @@ def iir_temporal_nr(frames: list, alpha: float) -> list:
         if prev_output is None:
             output = frame_f
         else:
-            output = None  # TODO: IIR 混合公式
+            output = alpha* frame_f + (1-alpha)*prev_output  # TODO: IIR 混合公式
 
         if output is None:
             output = frame_f
@@ -117,8 +133,8 @@ def task1_iir_temporal(frames):
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     for ax, (im, title) in zip(axes, [
         (frames[last], f"Noisy frame {last}"),
-        (alpha_03[last], "IIR α=0.3\n（強降噪，注意拖影）"),
-        (alpha_07[last], "IIR α=0.7\n（弱降噪，少拖影）"),
+        (alpha_03[last], "IIR α=0.3\n large denoise, motion ghost"),
+        (alpha_07[last], "IIR α=0.7\n less denoise"),
         (frames[0], "Reference frame 0"),
     ]):
         ax.imshow(im, cmap='gray', vmin=0, vmax=255)
@@ -145,8 +161,8 @@ def detect_motion(frame_curr: np.ndarray, frame_prev: np.ndarray,
 
     注意：uint8 相減會溢位，要先轉成 int32 再取絕對值。
     """
-    diff = None         # TODO: 計算絕對差值
-    motion_mask = None  # TODO: diff > threshold
+    diff = abs(frame_curr - frame_prev)        # TODO: 計算絕對差值
+    motion_mask = diff>threshold  # TODO: diff > threshold
     return motion_mask
 
 
@@ -210,7 +226,7 @@ def motion_adaptive_temporal_nr(frames: list, alpha_static: float = 0.2,
             if motion_mask is None:
                 output = alpha_static * frame_f + (1 - alpha_static) * prev_output
             else:
-                alpha_map = None  # TODO: np.where(motion_mask, alpha_motion, alpha_static)
+                alpha_map = np.where(motion_mask, alpha_motion, alpha_static)  # TODO: np.where(motion_mask, alpha_motion, alpha_static)
                 if alpha_map is None:
                     output = alpha_static * frame_f + (1 - alpha_static) * prev_output
                 else:
@@ -238,7 +254,7 @@ def task3_adaptive(frames):
         axes[2, col].set_title(f"Adaptive t={t}")
     for ax in axes.flat:
         ax.axis('off')
-    plt.suptitle("Task 3: 比較 Naive IIR vs Motion-Adaptive NR\n（注意移動物體的拖影差異）")
+    plt.suptitle("Task 3: 比較 Naive IIR vs Motion-Adaptive NR\n (motion ghost difference)")
     plt.savefig("output/task3_adaptive.png", dpi=120, bbox_inches='tight')
     plt.close()
     print("  → output/task3_adaptive.png")
@@ -263,7 +279,32 @@ def task4_bonus_psnr(frames):
         return 20 * np.log10(255 / np.sqrt(mse)) if mse > 0 else float('inf')
 
     # TODO: 生成 clean frames，計算各方法 PSNR 並畫圖
-    print("  → TODO: 計算各方法 PSNR 並比較")
+    clean_frames = generate_clean_sequence(num_frames=len(frames), size=frames[0].shape[0])
+    iir_frames = iir_temporal_nr(frames, alpha=0.3)
+    adaptive_frames = motion_adaptive_temporal_nr(frames)
+
+    psnr_noisy   = np.mean([psnr(frames[t], clean_frames[t]) for t in range(len(frames))])
+    psnr_spatial = np.mean([psnr(cv2.bilateralFilter(frames[t], 9, 75, 9), clean_frames[t]) for t in range(len(frames))])
+    psnr_iir     = np.mean([psnr(iir_frames[t], clean_frames[t]) for t in range(len(frames))])
+    psnr_adp     = np.mean([psnr(adaptive_frames[t], clean_frames[t]) for t in range(len(frames))])
+
+    print(f"  Noisy:          {psnr_noisy:.2f} dB")
+    print(f"  Spatial NR:     {psnr_spatial:.2f} dB")
+    print(f"  Temporal NR:    {psnr_iir:.2f} dB")
+    print(f"  Adaptive NR:    {psnr_adp:.2f} dB")
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    methods = ["Noisy", "Spatial NR\n(Bilateral)", "Temporal NR\n(IIR α=0.3)", "Adaptive NR"]
+    scores = [psnr_noisy, psnr_spatial, psnr_iir, psnr_adp]
+    bars = ax.bar(methods, scores, color=['gray', 'steelblue', 'orange', 'green'])
+    ax.set_ylabel("PSNR (dB)")
+    ax.set_title("Noise Reduction ")
+    for bar, score in zip(bars, scores):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                f"{score:.1f}", ha='center', va='bottom')
+    plt.savefig("output/task4_psnr.png", dpi=120, bbox_inches='tight')
+    plt.close()
+    print("  → output/task4_psnr.png")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────

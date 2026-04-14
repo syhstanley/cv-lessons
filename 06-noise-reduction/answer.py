@@ -12,6 +12,7 @@ import os
 os.makedirs("output", exist_ok=True)
 
 
+
 def generate_video_sequence(num_frames=10, size=256):
     frames = []
     bg = np.ones((size, size), dtype=np.float32) * 100
